@@ -6,6 +6,7 @@ import numpy as np
 import math
 
 from swing_phases import detect_phases, LEAD_WRIST
+from drill_recommender import print_recommendations
 
 # MediaPipe landmark indices
 LEFT_EYE = 2       # The eye midpoint sits near the head's rotation axis, so it
@@ -277,6 +278,15 @@ def main():
           f"[threshold {posture['threshold']:.0f} deg]")
     print(f"  Verdict: {mark(posture['flagged'])}" +
           (" - stood up out of posture" if posture['flagged'] else " - posture maintained"))
+
+    # Recommend corrective drills for whatever faults were flagged above.
+    fault_report = {
+        'head_sway': head,
+        'reverse_pivot': pivot,
+        'early_extension': extension,
+        'loss_of_posture': posture,
+    }
+    print_recommendations(fault_report)
 
     # ---- Visual: head movement ----
     bg = _read_frame(phases['takeaway'])
