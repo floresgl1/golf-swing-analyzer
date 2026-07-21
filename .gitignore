@@ -1,0 +1,21 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# MediaPipe model (large binary)
+data/pose_landmarker.task
+
+# Test videos (large files)
+data/videos/
+
+# Generated outputs
+output/
+
+# OS files
+.DS_Store
+Thumbs.db
+# Claude Code local settings
+.claude/settings.local.json
