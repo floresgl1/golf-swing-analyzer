@@ -58,8 +58,6 @@ double _spineTilt(double shX, double shY, double hipX, double hipY) {
 class HeadMovementResult {
   final double lateral; // torso-lengths, address→impact
   final double vertical;
-  final double total;
-  final double distPx;
   final bool swayFlagged;
   final bool dipFlagged;
 
@@ -69,8 +67,6 @@ class HeadMovementResult {
   const HeadMovementResult({
     required this.lateral,
     required this.vertical,
-    required this.total,
-    required this.distPx,
     required this.swayFlagged,
     required this.dipFlagged,
     required this.flagged,
@@ -131,7 +127,6 @@ HeadMovementResult detectHeadMovement(
 
   final dx = impX - addrX;
   final dy = impY - addrY;
-  final distPx = hypot(dx, dy);
   final hasScale = scale != 0 && scale.isFinite;
   final lateral = hasScale ? dx.abs() / scale : double.nan;
   final vertical = hasScale ? dy.abs() / scale : double.nan;
@@ -139,8 +134,6 @@ HeadMovementResult detectHeadMovement(
   return HeadMovementResult(
     lateral: lateral,
     vertical: vertical,
-    total: hasScale ? distPx / scale : double.nan,
-    distPx: distPx,
     swayFlagged: lateral > swayThreshold,
     dipFlagged: vertical > dipThreshold,
     flagged: lateral > swayThreshold,

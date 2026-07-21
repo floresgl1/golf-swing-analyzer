@@ -6,8 +6,6 @@
 /// `np.nan` for frames where no pose was detected).
 library;
 
-import 'dart:math' as math;
-
 /// Median of the finite values in [values], ignoring NaNs.
 ///
 /// Matches `numpy.nanmedian`: an even count averages the two middle elements,
@@ -120,6 +118,3 @@ int argMaxSlice(List<double> a, int start, int end) {
   }
   return best;
 }
-
-/// Euclidean distance between two points, matching `math.dist`/`math.hypot`.
-double hypot(double dx, double dy) => math.sqrt(dx * dx + dy * dy);

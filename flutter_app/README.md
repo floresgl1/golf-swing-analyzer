@@ -68,33 +68,74 @@ and fault verdicts were verified against the original Python detectors
 (`top=29, impact=45, finish=60`; sway/early-extension/posture/reverse-pivot all
 flag at the constructed magnitudes). Run them with `flutter test`.
 
+## Requirements
+
+- **Flutter SDK ≥ 3.19.0** with **Dart ≥ 3.3.0** (declared in `pubspec.yaml`).
+  Check yours with `flutter --version`; upgrade with `flutter upgrade`.
+- A **physical device** — the camera, ML Kit pose model, and ffmpeg do not run
+  on simulators/emulators reliably. Use a real Android phone or iPhone.
+- **Android**: `minSdkVersion 24` (ML Kit needs 21, ffmpeg needs 24, so 24 wins).
+- **iOS**: deployment target **12.0+**, built with Xcode on macOS.
+
 ## Building and running
 
-This repo contains the Dart/Flutter source and assets. Generate the platform
-folders and fetch packages before the first run:
+This directory holds the Dart source, tests, and assets but not the generated
+platform folders (they're git-ignored — see the repo root README). Generate them
+and fetch packages before the first run:
 
 ```bash
 cd flutter_app
-flutter create .          # generates android/ and ios/ around this source
-flutter pub get
-flutter run                # on a connected device (camera is required)
+flutter create .        # regenerates android/ and ios/ around this source
+flutter pub get         # resolve dependencies from pubspec.yaml
+```
+
+Then wire up permissions (below), connect a device, and run:
+
+```bash
+flutter devices         # confirm your phone is listed
+flutter run             # debug build on the connected device
+# or: flutter run --release   for a faster, production-like build
+```
+
+Run the ported-logic unit tests (no device needed):
+
+```bash
+flutter test
 ```
 
 ### Permissions
 
-Add the camera permission to each platform after `flutter create`:
+`flutter create .` scaffolds the platform folders; then add the camera
+permission to each. (Audio is disabled in the recorder, so no microphone
+permission is required.)
 
-- **Android** — `android/app/src/main/AndroidManifest.xml`:
-  ```xml
-  <uses-permission android:name="android.permission.CAMERA"/>
-  ```
-  and set `minSdkVersion 21` (ML Kit) / `24` (ffmpeg) in
-  `android/app/build.gradle`.
-- **iOS** — `ios/Runner/Info.plist`:
-  ```xml
-  <key>NSCameraUsageDescription</key>
-  <string>Record your golf swing for analysis.</string>
-  ```
+**Android** — in `android/app/src/main/AndroidManifest.xml`, inside `<manifest>`
+and above the `<application>` tag:
+
+```xml
+<uses-permission android:name="android.permission.CAMERA"/>
+```
+
+And set the minimum SDK in `android/app/build.gradle`:
+
+```gradle
+android {
+    defaultConfig {
+        minSdkVersion 24
+    }
+}
+```
+
+**iOS** — in `ios/Runner/Info.plist`, add inside the top-level `<dict>`:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>Record your golf swing so the app can analyze it.</string>
+```
+
+And set the deployment target to 12.0 or higher in `ios/Podfile`
+(`platform :ios, '12.0'`) and in Xcode under *Runner → General → Minimum
+Deployments*.
 
 ## Editing the drill library
 
