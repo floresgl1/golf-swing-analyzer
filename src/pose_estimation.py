@@ -3,7 +3,7 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-from swing_phases import detect_phases, LEAD_WRIST, LEAD_SIDE
+from swing_phases import detect_phases, require_valid_fps, LEAD_WRIST, LEAD_SIDE
 
 # MediaPipe pose landmark indices for the joints we care about
 LEFT_SHOULDER = 11
@@ -77,7 +77,7 @@ wrist_y = []
 
 with vision.PoseLandmarker.create_from_options(options) as landmarker:
     cap = cv2.VideoCapture(VIDEO_PATH)
-    fps = cap.get(cv2.CAP_PROP_FPS)
+    fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), VIDEO_PATH)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     frame_count = 0

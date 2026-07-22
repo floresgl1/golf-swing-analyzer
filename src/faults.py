@@ -6,7 +6,7 @@ import numpy as np
 import math
 import sys
 
-from swing_phases import detect_phases, swing_tempo, LEAD_WRIST
+from swing_phases import detect_phases, require_valid_fps, swing_tempo, LEAD_WRIST
 from drill_recommender import print_recommendations
 from swing_history import (FAULT_METRICS, build_session, load_sessions,
                            save_session, print_comparison)
@@ -216,7 +216,7 @@ def main():
 
     with vision.PoseLandmarker.create_from_options(options) as landmarker:
         cap = cv2.VideoCapture(VIDEO_PATH)
-        fps = cap.get(cv2.CAP_PROP_FPS)
+        fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), VIDEO_PATH)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         frame_count = 0

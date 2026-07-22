@@ -4,7 +4,7 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import matplotlib.pyplot as plt
 
-from swing_phases import detect_phases, LEAD_WRIST
+from swing_phases import detect_phases, require_valid_fps, LEAD_WRIST
 
 VIDEO_PATH = 'data/videos/videoplayback.mp4'
 OUTPUT_PATH = 'output/swing_phases_montage.png'
@@ -41,7 +41,7 @@ wrist_y = []
 
 with vision.PoseLandmarker.create_from_options(options) as landmarker:
     cap = cv2.VideoCapture(VIDEO_PATH)
-    fps = cap.get(cv2.CAP_PROP_FPS)
+    fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), VIDEO_PATH)
     frame_count = 0
 
     while cap.isOpened():
