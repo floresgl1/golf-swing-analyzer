@@ -40,6 +40,7 @@ numerically.
 | `faults.py` → 4 detectors, `_addr_median`, `_window_median`, `_spine_tilt` | `faults.dart` |
 | `drill_recommender.py` → load + recommend | `drill_recommender.dart` |
 | `data/drills.json` | `assets/drills.json` (bundled) |
+| `swing_history.py` → sessions, save/load, progress comparison | `swing_history.dart` (stored in the app documents dir; rendered by `ui/widgets/swing_comparison_view.dart` on the report screen) |
 
 Key details preserved exactly:
 

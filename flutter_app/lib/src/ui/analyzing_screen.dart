@@ -1,5 +1,10 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+import '../analysis/swing_history.dart';
 import '../models/drill.dart';
 import '../models/swing_analysis.dart';
 import '../services/swing_analyzer.dart';
@@ -46,10 +51,23 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
           });
         },
       );
+      // Verification loop: log this swing to the on-device history and fetch
+      // the comparison against the previous session. Best-effort — a storage
+      // hiccup must never block the report.
+      SwingComparison? comparison;
+      try {
+        final dir = await getApplicationDocumentsDirectory();
+        final store =
+            SwingHistoryStore(File(p.join(dir.path, 'swing_history.json')));
+        comparison = await store.append(analysis.session);
+      } catch (_) {
+        comparison = null;
+      }
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
-          builder: (_) => ReportScreen(analysis: analysis),
+          builder: (_) =>
+              ReportScreen(analysis: analysis, comparison: comparison),
         ),
       );
     } on SwingAnalysisException catch (e) {

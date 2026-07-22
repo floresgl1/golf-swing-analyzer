@@ -4,6 +4,7 @@
 library;
 
 import '../analysis/faults.dart';
+import '../analysis/swing_history.dart';
 import '../analysis/swing_phases.dart';
 import 'drill.dart';
 
@@ -42,6 +43,10 @@ class SwingAnalysis {
   /// Recommended drills per flagged fault id, each list sorted easiest-first.
   final Map<String, List<Drill>> recommendations;
 
+  /// This swing as a history entry, ready to append to the swing history for
+  /// the swing-over-swing progress comparison.
+  final SwingSession session;
+
   const SwingAnalysis({
     required this.phases,
     required this.tempo,
@@ -49,6 +54,7 @@ class SwingAnalysis {
     required this.frameCount,
     required this.faults,
     required this.recommendations,
+    required this.session,
   });
 
   List<FaultVerdict> get flaggedFaults =>

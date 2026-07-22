@@ -12,6 +12,7 @@ import 'dart:async';
 
 import '../analysis/drill_recommender.dart';
 import '../analysis/faults.dart';
+import '../analysis/swing_history.dart';
 import '../analysis/swing_phases.dart';
 import '../models/drill.dart';
 import '../models/frame_features.dart';
@@ -141,13 +142,21 @@ class SwingAnalyzer {
         faultVerdicts.where((f) => f.flagged).map((f) => f.id).toList();
     final recommendations = recommendDrills(flaggedIds, drills);
 
+    final tempo = swingTempo(phases, fps);
     return SwingAnalysis(
       phases: phases,
-      tempo: swingTempo(phases, fps),
+      tempo: tempo,
       fps: fps,
       frameCount: features.length,
       faults: faultVerdicts,
       recommendations: recommendations,
+      session: buildSession(
+        head: head,
+        pivot: pivot,
+        extension: extension,
+        posture: posture,
+        tempo: tempo,
+      ),
     );
   }
 

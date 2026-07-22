@@ -25,6 +25,7 @@ the Python detectors).
 | Fault detectors (×4) | `faults.py` | `faults.dart` |
 | Drill recommendation | `drill_recommender.py` | `drill_recommender.dart` |
 | Drill library | `data/drills.json` | bundled `flutter_app/assets/drills.json` |
+| Swing history + progress comparison | `swing_history.py` (`data/swing_history.json`) | `swing_history.dart` (app documents dir) |
 
 The four faults — **head sway, reverse pivot, early extension, loss of
 posture** — are all measured against torso length (so thresholds are

@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
 
+import '../analysis/swing_history.dart';
 import '../models/swing_analysis.dart';
 import 'widgets/drill_tile.dart';
 import 'widgets/fault_card.dart';
+import 'widgets/swing_comparison_view.dart';
 
-/// The swing report: tempo summary, the four fault verdicts, and drills nested
-/// under each flagged fault.
+/// The swing report: tempo summary, the four fault verdicts, drills nested
+/// under each flagged fault, and — from the second swing on — progress vs the
+/// previous session.
 class ReportScreen extends StatelessWidget {
-  const ReportScreen({super.key, required this.analysis});
+  const ReportScreen({super.key, required this.analysis, this.comparison});
 
   final SwingAnalysis analysis;
 
+  /// Progress vs the previous stored session; null on the first swing.
+  final SwingComparison? comparison;
+
   @override
   Widget build(BuildContext context) {
+    final comparison = this.comparison;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Swing report'),
@@ -39,6 +46,8 @@ class ReportScreen extends StatelessWidget {
               ],
             ),
           if (!analysis.anyFlagged) const _CleanSwingBanner(),
+          if (comparison != null)
+            SwingComparisonView(comparison: comparison),
           const SizedBox(height: 24),
         ],
       ),
