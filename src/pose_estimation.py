@@ -3,7 +3,7 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-from swing_phases import detect_phases, LEAD_WRIST, LEAD_SIDE
+from swing_phases import detect_phases, LEAD_WRIST
 
 # MediaPipe pose landmark indices for the joints we care about
 LEFT_SHOULDER = 11
