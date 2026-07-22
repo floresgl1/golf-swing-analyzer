@@ -3,7 +3,7 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-from swing_phases import detect_phases, LEAD_WRIST
+from swing_phases import detect_phases, require_valid_fps, LEAD_WRIST, LEAD_SIDE
 
 # MediaPipe pose landmark indices for the joints we care about
 LEFT_SHOULDER = 11
@@ -63,104 +63,109 @@ def phase_for_frame(i, phases):
     return 'Follow-through'
 
 
-# Step 1: Configure the PoseLandmarker
-base_options = python.BaseOptions(model_asset_path='data/pose_landmarker.task')
-options = vision.PoseLandmarkerOptions(
-    base_options=base_options,
-    running_mode=vision.RunningMode.VIDEO
-)
+def main():
+    # Step 1: Configure the PoseLandmarker
+    base_options = python.BaseOptions(model_asset_path='data/pose_landmarker.task')
+    options = vision.PoseLandmarkerOptions(
+        base_options=base_options,
+        running_mode=vision.RunningMode.VIDEO
+    )
 
-# ---- Pass 1: detect the pose for every frame and collect the wrist trajectory ----
-# Cache each frame's landmarks so the second pass can redraw without re-detecting.
-per_frame_landmarks = []
-wrist_y = []
+    # ---- Pass 1: detect the pose for every frame and collect the wrist trajectory ----
+    # Cache each frame's landmarks so the second pass can redraw without re-detecting.
+    per_frame_landmarks = []
+    wrist_y = []
 
-with vision.PoseLandmarker.create_from_options(options) as landmarker:
+    with vision.PoseLandmarker.create_from_options(options) as landmarker:
+        cap = cv2.VideoCapture(VIDEO_PATH)
+        fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), VIDEO_PATH)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        frame_count = 0
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Convert to MediaPipe Image (BGR → RGB, then wrap)
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+
+            # Detect and cache the landmarks + lead-wrist height
+            timestamp_ms = int(frame_count * 1000 / fps)
+            results = landmarker.detect_for_video(mp_image, timestamp_ms)
+            frame_count += 1
+
+            if results.pose_landmarks:
+                landmarks = results.pose_landmarks[0]
+                per_frame_landmarks.append(landmarks)
+                wrist_y.append(landmarks[LEAD_WRIST].y)
+            else:
+                per_frame_landmarks.append(None)
+                wrist_y.append(float('nan'))
+
+        cap.release()
+
+    # ---- Detect the swing phases from the collected trajectory ----
+    phases = detect_phases(wrist_y)
+
+    # ---- Pass 2: redraw the skeleton, burn in the phase label, and write the video ----
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    writer = cv2.VideoWriter(OUTPUT_PATH, fourcc, fps, (width, height))
+
     cap = cv2.VideoCapture(VIDEO_PATH)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    frame_count = 0
+    frame_idx = 0
 
     while cap.isOpened():
         ret, frame = cap.read()
-        if not ret:
+        if not ret or frame_idx >= len(per_frame_landmarks):
             break
 
-        # Convert to MediaPipe Image (BGR → RGB, then wrap)
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        h, w = frame.shape[:2]
+        landmarks = per_frame_landmarks[frame_idx]
 
-        # Detect and cache the landmarks + lead-wrist height
-        timestamp_ms = int(frame_count * 1000 / fps)
-        results = landmarker.detect_for_video(mp_image, timestamp_ms)
-        frame_count += 1
+        # Draw the skeleton from the cached landmarks
+        if landmarks is not None:
+            # Lines first, so the keypoints sit on top
+            for a, b in CONNECTIONS:
+                pa = (int(landmarks[a].x * w), int(landmarks[a].y * h))
+                pb = (int(landmarks[b].x * w), int(landmarks[b].y * h))
+                cv2.line(frame, pa, pb, (255, 0, 0), 2)
+            for landmark in landmarks:
+                cv2.circle(frame, (int(landmark.x * w), int(landmark.y * h)), 4, (0, 255, 0), -1)
 
-        if results.pose_landmarks:
-            landmarks = results.pose_landmarks[0]
-            per_frame_landmarks.append(landmarks)
-            wrist_y.append(landmarks[LEAD_WRIST].y)
-        else:
-            per_frame_landmarks.append(None)
-            wrist_y.append(float('nan'))
+        # Burn in the current swing phase (colored text with a dark outline)
+        label = phase_for_frame(frame_idx, phases)
+        if label:
+            seconds = frame_idx / fps if fps else 0.0
+            text = f'{label}  {seconds:0.1f}s'
+            origin = (15, 40)
+            cv2.putText(frame, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 4, cv2.LINE_AA)
+            cv2.putText(frame, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.8, PHASE_COLORS[label], 2, cv2.LINE_AA)
+
+        # Flash the key events for a few frames so they stand out
+        event = None
+        if phases:
+            if abs(frame_idx - phases['top']) <= 2:
+                event = 'TOP OF BACKSWING'
+            elif abs(frame_idx - phases['impact']) <= 2:
+                event = 'IMPACT'
+        if event:
+            cv2.putText(frame, event, (15, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 4, cv2.LINE_AA)
+            cv2.putText(frame, event, (15, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2, cv2.LINE_AA)
+
+        writer.write(frame)
+
+        cv2.imshow('Golf Swing Analysis', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+        frame_idx += 1
 
     cap.release()
+    writer.release()
+    cv2.destroyAllWindows()
 
-# ---- Detect the swing phases from the collected trajectory ----
-phases = detect_phases(wrist_y)
 
-# ---- Pass 2: redraw the skeleton, burn in the phase label, and write the video ----
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-writer = cv2.VideoWriter(OUTPUT_PATH, fourcc, fps, (width, height))
-
-cap = cv2.VideoCapture(VIDEO_PATH)
-frame_idx = 0
-
-while cap.isOpened():
-    ret, frame = cap.read()
-    if not ret or frame_idx >= len(per_frame_landmarks):
-        break
-
-    h, w = frame.shape[:2]
-    landmarks = per_frame_landmarks[frame_idx]
-
-    # Draw the skeleton from the cached landmarks
-    if landmarks is not None:
-        # Lines first, so the keypoints sit on top
-        for a, b in CONNECTIONS:
-            pa = (int(landmarks[a].x * w), int(landmarks[a].y * h))
-            pb = (int(landmarks[b].x * w), int(landmarks[b].y * h))
-            cv2.line(frame, pa, pb, (255, 0, 0), 2)
-        for landmark in landmarks:
-            cv2.circle(frame, (int(landmark.x * w), int(landmark.y * h)), 4, (0, 255, 0), -1)
-
-    # Burn in the current swing phase (colored text with a dark outline)
-    label = phase_for_frame(frame_idx, phases)
-    if label:
-        seconds = frame_idx / fps if fps else 0.0
-        text = f'{label}  {seconds:0.1f}s'
-        origin = (15, 40)
-        cv2.putText(frame, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 4, cv2.LINE_AA)
-        cv2.putText(frame, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.8, PHASE_COLORS[label], 2, cv2.LINE_AA)
-
-    # Flash the key events for a few frames so they stand out
-    event = None
-    if phases:
-        if abs(frame_idx - phases['top']) <= 2:
-            event = 'TOP OF BACKSWING'
-        elif abs(frame_idx - phases['impact']) <= 2:
-            event = 'IMPACT'
-    if event:
-        cv2.putText(frame, event, (15, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 4, cv2.LINE_AA)
-        cv2.putText(frame, event, (15, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2, cv2.LINE_AA)
-
-    writer.write(frame)
-
-    cv2.imshow('Golf Swing Analysis', frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-    frame_idx += 1
-
-cap.release()
-writer.release()
-cv2.destroyAllWindows()
+if __name__ == '__main__':
+    main()

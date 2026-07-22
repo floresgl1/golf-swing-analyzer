@@ -7,7 +7,10 @@ edit drills without touching any code -- see the notes at the top of
 data/drills.json.
 """
 import json
+import logging
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 # The library lives next to the code, under the repo's data/ directory. Resolve
 # it from this file's location so recommendations work regardless of the caller's
@@ -28,10 +31,23 @@ FAULT_LABELS = {
 
 
 def load_drills(path=DRILL_LIBRARY_PATH):
-    """Load the drill library and return the list of drill dicts."""
-    with open(path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    return data['drills']
+    """Load the drill library and return the list of drill dicts.
+
+    A missing, unreadable, or malformed library must not take the app down --
+    recommendations degrade to "no drills in the library" instead. On any load
+    or parse failure this logs a warning and returns an empty list.
+    """
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        drills = data['drills']
+        if not isinstance(drills, list):
+            raise ValueError("'drills' is not a list")
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        log.warning("Could not load drill library %s (%s) -- continuing with "
+                    "an empty drill list.", path, e)
+        return []
+    return drills
 
 
 def flagged_faults(report):

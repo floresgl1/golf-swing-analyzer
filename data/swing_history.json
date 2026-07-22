@@ -1,0 +1,32 @@
+{
+  "_comment": "Swing session history written by src/swing_history.py after every run of src/faults.py. Each session records a timestamp, per-fault measurements (value, threshold, flagged), the swing tempo ratio, and optionally the fault id the golfer was targeting that session. Sessions are ordered oldest to newest. Delete entries from 'sessions' (or reset it to []) to clear history.",
+  "sessions": [
+    {
+      "timestamp": "2026-07-21T20:55:48-07:00",
+      "faults": {
+        "head_sway": {
+          "value": 0.5467,
+          "threshold": 0.13,
+          "flagged": true
+        },
+        "reverse_pivot": {
+          "value": -0.0378,
+          "threshold": 0.12,
+          "flagged": false
+        },
+        "early_extension": {
+          "value": -0.0187,
+          "threshold": 0.1,
+          "flagged": false
+        },
+        "loss_of_posture": {
+          "value": -16.304,
+          "threshold": 12.0,
+          "flagged": false
+        }
+      },
+      "tempo_ratio": 1.9835,
+      "targeting": null
+    }
+  ]
+}
