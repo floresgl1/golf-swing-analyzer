@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 
-from swing_phases import detect_phases, LEAD_WRIST
+from swing_phases import detect_phases, require_valid_fps, LEAD_WRIST
 
 # MediaPipe landmark indices
 LEFT_SHOULDER = 11
@@ -79,7 +79,7 @@ def main():
 
     with vision.PoseLandmarker.create_from_options(options) as landmarker:
         cap = cv2.VideoCapture(VIDEO_PATH)
-        fps = cap.get(cv2.CAP_PROP_FPS)
+        fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), VIDEO_PATH)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         frame_count = 0

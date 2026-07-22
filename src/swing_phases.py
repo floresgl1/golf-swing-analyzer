@@ -3,6 +3,7 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import matplotlib.pyplot as plt
+import math
 import numpy as np
 
 # MediaPipe wrist landmark indices
@@ -15,6 +16,25 @@ HANDEDNESS = 'right'  # 'right' or 'left'
 # left wrist for a right-handed golfer, right wrist for a lefty.
 LEAD_WRIST = LEFT_WRIST if HANDEDNESS == 'right' else RIGHT_WRIST
 LEAD_SIDE = 'Left' if HANDEDNESS == 'right' else 'Right'
+
+
+def require_valid_fps(fps, video_path):
+    """Return fps as a float, or exit with a clear error when it is unusable.
+
+    OpenCV reports 0 (or nan) for the FPS of a missing, unreadable, or corrupt
+    video; downstream timestamp and tempo math divides by fps, so a bad value
+    must stop the run before it turns into a ZeroDivisionError traceback.
+    """
+    try:
+        fps = float(fps)
+    except (TypeError, ValueError):
+        fps = 0.0
+    if not math.isfinite(fps) or fps <= 0:
+        raise SystemExit(
+            f"Error: could not read a valid frame rate from '{video_path}' "
+            f"(got {fps!r}). The video file may be missing, unreadable, or corrupt."
+        )
+    return fps
 
 
 def _moving_average(a, w):
@@ -108,7 +128,7 @@ def main():
     # Step 2: Create the landmarker and open the video
     with vision.PoseLandmarker.create_from_options(options) as landmarker:
         cap = cv2.VideoCapture('data/videos/videoplayback.mp4')
-        fps = cap.get(cv2.CAP_PROP_FPS)
+        fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), 'data/videos/videoplayback.mp4')
         frame_count = 0
 
         while cap.isOpened():

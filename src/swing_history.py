@@ -11,11 +11,15 @@ All four fault metrics measure excess motion, so for every fault a LOWER value
 is better. Tempo is judged by distance from the ~3:1 tour benchmark instead.
 """
 import json
+import logging
 import math
+import os
 from datetime import datetime
 from pathlib import Path
 
 from drill_recommender import FAULT_LABELS, recommend_drills
+
+log = logging.getLogger(__name__)
 
 # History lives next to the drill library; resolve from this file's location so
 # it works regardless of the caller's current working directory.
@@ -77,29 +81,60 @@ def build_session(fault_report, tempo=None, targeting=None):
     }
 
 
-def load_sessions(path=HISTORY_PATH):
-    """Return the list of stored sessions, oldest first ([] if no history)."""
+def _read_history(path):
+    """Read the history file into a {'sessions': [...]} dict.
+
+    Returns an empty history when the file does not exist. If the file exists
+    but is corrupt (unreadable or malformed JSON, or the wrong shape), it is
+    renamed to <name>.corrupt.bak and an empty history is returned, so a
+    damaged file never leaves the caller stuck -- the run just starts fresh.
+    """
     path = Path(path)
     if not path.exists():
-        return []
-    with open(path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    return data.get('sessions', [])
+        return {'sessions': []}
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or not isinstance(data.get('sessions'), list):
+            raise ValueError("history is not a {'sessions': [...]} object")
+    except (OSError, ValueError) as e:
+        backup = path.with_suffix(path.suffix + '.corrupt.bak')
+        try:
+            os.replace(path, backup)
+            log.warning("Swing history %s was corrupt (%s) -- moved it to %s "
+                        "and started fresh.", path, e, backup)
+        except OSError as move_err:
+            log.warning("Swing history %s was corrupt (%s) and could not be "
+                        "moved aside (%s) -- starting fresh.", path, e, move_err)
+        return {'sessions': []}
+    return data
+
+
+def load_sessions(path=HISTORY_PATH):
+    """Return the list of stored sessions, oldest first ([] if no history).
+
+    A corrupt history file is backed up and treated as empty (see
+    _read_history), so loading never fails on a damaged file.
+    """
+    return _read_history(path)['sessions']
 
 
 def save_session(session, path=HISTORY_PATH):
-    """Append a session to the history file (creating it if needed)."""
+    """Append a session to the history file (creating it if needed).
+
+    The write is atomic: the updated history is written to a temp file in the
+    same directory and then os.replace()d onto the real path, so an interrupted
+    or failed write can never leave a half-written (corrupt) history behind.
+    """
     path = Path(path)
-    if path.exists():
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        data.setdefault('sessions', [])
-    else:
-        data = {'sessions': []}
+    data = _read_history(path)
     data['sessions'].append(session)
-    with open(path, 'w', encoding='utf-8') as f:
+
+    tmp = path.with_suffix(path.suffix + '.tmp')
+    with open(tmp, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
         f.write('\n')
+    os.replace(tmp, path)
     return session
 
 
