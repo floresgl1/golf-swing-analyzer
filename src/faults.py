@@ -4,9 +4,12 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import numpy as np
 import math
+import sys
 
-from swing_phases import detect_phases, LEAD_WRIST
+from swing_phases import detect_phases, swing_tempo, LEAD_WRIST
 from drill_recommender import print_recommendations
+from swing_history import (FAULT_METRICS, build_session, load_sessions,
+                           save_session, print_comparison)
 
 # MediaPipe landmark indices
 LEFT_EYE = 2       # The eye midpoint sits near the head's rotation axis, so it
@@ -194,6 +197,15 @@ def _ipt(p):
 
 
 def main():
+    # Optional CLI arg: the fault id the golfer is practicing against this
+    # session (e.g. `python src/faults.py head_sway`). Recorded in the swing
+    # history so the next comparison can call out whether the focus paid off.
+    targeting = sys.argv[1] if len(sys.argv) > 1 else None
+    if targeting and targeting not in FAULT_METRICS:
+        print(f"Unknown fault id '{targeting}' -- valid ids: "
+              f"{', '.join(FAULT_METRICS)}. Not recording a focus fault.")
+        targeting = None
+
     base_options = python.BaseOptions(model_asset_path='data/pose_landmarker.task')
     options = vision.PoseLandmarkerOptions(
         base_options=base_options,
@@ -287,6 +299,18 @@ def main():
         'loss_of_posture': posture,
     }
     print_recommendations(fault_report)
+
+    # Verification loop: log this session to the swing history, then show how
+    # it stacks up against the previous one so the golfer can see whether the
+    # practice is working.
+    session = build_session(fault_report, swing_tempo(phases, fps), targeting)
+    history = load_sessions()
+    save_session(session)
+    if history:
+        print_comparison(history[-1], session)
+    else:
+        print("\nSwing history started -- run the analyzer again after "
+              "practicing to see your progress.")
 
     # ---- Visual: head movement ----
     bg = _read_frame(phases['takeaway'])

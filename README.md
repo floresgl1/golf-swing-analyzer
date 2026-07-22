@@ -15,6 +15,11 @@ phases, measures tempo and body angles, and flags common swing faults.
   with circular (period-180°) smoothing that down-weights foreshortened frames.
 - **Fault detection** — a combined report for head sway, reverse pivot, early
   extension, and loss of posture, each with an annotated still.
+- **Progress tracking (verification loop)** — every run of `faults.py` is saved
+  to [data/swing_history.json](data/swing_history.json) and compared against the
+  previous session: per-fault previous → current values, improved/worsened
+  verdicts, threshold crossings ("fault fixed" / "NEW fault" with a starter
+  drill), and tempo drift vs. the 3:1 benchmark.
 
 ## Requirements
 
@@ -64,7 +69,14 @@ are relative to it):
 | `python src/pose_estimation.py` | `output/annotated.mp4` (skeleton + phase labels) |
 | `python src/phase_montage.py` | `output/swing_phases_montage.png` (four key positions) |
 | `python src/body_angles.py` | Shoulder/hip angles (console) + `output/body_angles.png` |
-| `python src/faults.py` | Fault report (console) + one annotated still per fault |
+| `python src/faults.py` | Fault report + drills + progress vs. last session (console); one annotated still per fault |
+| `python src/faults.py <fault_id>` | Same, recording which fault you practiced (e.g. `head_sway`) so the next run's comparison calls out whether the focus paid off |
+| `python src/swing_history.py` | Demo of the progress comparison on two synthetic sessions |
+
+Valid fault ids for the focus argument: `head_sway`, `reverse_pivot`,
+`early_extension`, `loss_of_posture`. History accumulates in
+[data/swing_history.json](data/swing_history.json); reset `"sessions"` to `[]`
+to start over.
 
 The scripts that open a plot window (`swing_phases`, `body_angles`) still save
 their PNG whether or not the window is shown. Press `q` to quit the annotated
@@ -109,6 +121,11 @@ src/
   phase_montage.py     four-position checkpoint montage
   body_angles.py       shoulder/hip line angles + smoothing
   faults.py            head sway, reverse pivot, early extension, loss of posture
-data/                  model + video (not tracked)
+  drill_recommender.py corrective drills for flagged faults (data/drills.json)
+  swing_history.py     session history + swing-over-swing progress comparison
+data/                  model + video (not tracked); drill library + swing history
 output/                generated plots, montage, annotated video (not tracked)
 ```
+
+The Flutter mobile app — including the Dart port of the swing history and
+progress comparison — lives on the `flutter-mvp` branch under `flutter_app/`.

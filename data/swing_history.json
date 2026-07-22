@@ -1,0 +1,4 @@
+{
+  "_comment": "Swing session history written by src/swing_history.py after every run of src/faults.py. Each session records a timestamp, per-fault measurements (value, threshold, flagged), the swing tempo ratio, and optionally the fault id the golfer was targeting that session. Sessions are ordered oldest to newest. Delete entries from 'sessions' (or reset it to []) to clear history.",
+  "sessions": []
+}
