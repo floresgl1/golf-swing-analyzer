@@ -228,3 +228,66 @@ mediapipe==0.10.35
 6. 🟠 Add Python unit tests mirroring the Dart suite (items 12–13) — the source of truth is currently untested.
 
 **Applied in this pass:** removed the unused `LEAD_SIDE` import (`src/pose_estimation.py`). Nothing else changed.
+
+---
+
+# Addendum — swing-history feature (commit `6ef236d`)
+
+Added after the original audit: a swing-over-swing "verification loop" landed on `flutter-mvp` while the audit was in flight — `flutter_app/lib/src/analysis/swing_history.dart` (~350 lines), `ui/widgets/swing_comparison_view.dart` (~227 lines), `test/swing_history_test.dart`, and wiring into `swing_analyzer`/`analyzing_screen`/`report_screen`/`swing_analysis`. This addendum covers it and **updates two items above**: the Preliminary note "`swing_history.json` does not exist" and Item 8 are now superseded by the findings here.
+
+Overall this is clean, well-decomposed code with strong pure-logic tests. Findings, worst first:
+
+### A1 🔴 Claims to port a `src/swing_history.py` that does not exist (parity + docs)
+
+`swing_history.dart` says it is "ported from `src/swing_history.py` (the verification loop)" and that `buildSession` is "the counterpart of `build_session` in `src/swing_history.py`." Both READMEs now list a Python `swing_history.py` (`data/swing_history.json`) in the parity table. **No such Python file exists** (verified on both branches).
+
+Consequences:
+- Unlike every other module, this feature has **no Python source of truth**, so its logic and its new constants (see A5) are **un-cross-checked** — the parity guarantee the rest of the project relies on doesn't hold here.
+- The docstrings and both README tables reference a non-existent file — a documentation defect that will mislead the next reader, and the claim "histories are interchangeable across the two implementations" is currently false.
+
+**Proposed fix (your call):** either (a) **write `src/swing_history.py`** mirroring the Dart (restores the project's Python-is-source-of-truth pattern and makes the JSON genuinely interchangeable — the snake_case keys are already Python-friendly), or (b) **correct the docs/docstrings** to state this is a Dart-only feature with no Python counterpart yet. Recommend (a) for consistency.
+
+### A2 🟠 Corrupt history file leaves the store permanently stuck (masked by a blanket catch)
+
+`SwingHistoryStore.load()` (`swing_history.dart:329`) does `jsonDecode(await file.readAsString()) as Map<String, dynamic>` and `FaultResult.fromJson` does unguarded `as num`/`as bool` casts. A corrupt or schema-drifted history file therefore makes `load()` — and thus `append()` — **throw**.
+
+The app doesn't crash, because `analyzing_screen.dart` wraps `store.append(...)` in `try/catch (_) { comparison = null; }`. But that blanket catch has a hidden cost: on a corrupt file, `append()` throws **before writing**, so (a) the current session is never persisted, and (b) the corrupt file is left in place — so **every future swing silently fails to record too**, and the user is never told their history is broken. The history simply stops accumulating forever.
+
+**Proposed fix:** make `load()` self-healing — catch `FormatException`/`TypeError`, treat a corrupt file as empty history (ideally rename it to `.corrupt` first), so the next `append()` overwrites it with a valid file and recording resumes.
+
+### A3 🟠 Non-atomic write can lose the entire history
+
+`append()` (`swing_history.dart:343`) rewrites the whole file in place with `file.writeAsString(...)`. If the app is killed or storage fills mid-write, the file is left truncated/corrupt and **all prior sessions are lost** (compounding A2). **Proposed fix:** write to a temp file then atomically rename over the target (and/or keep a `.bak`). Standard durable-write pattern for append-only local stores.
+
+### A4 🟠 The `targeting`/focus-fault path is dead in practice
+
+`SwingSession.targeting` drives a chunk of UI: the "You were working on: …" line, the `(your focus)` row tag, and `_focusVerdict` ("your focus fault improved / hasn't improved"). But **nothing ever sets `targeting`** — `swing_analyzer._buildReport` calls `buildSession(...)` without it (`swing_analyzer.dart:153`), and no screen collects it. So `focusFault` is always null and none of that UI ever renders in the running app (only tests pass a value).
+
+**Proposed fix:** wire a small "what are you working on today?" picker (e.g., on the record screen) that flows into `buildSession(targeting: …)`; or, if out of scope for the MVP, drop the focus UI/field until it's connected so it isn't dead weight.
+
+### A5 🟡 New tunable constants, un-cross-checked
+
+The feature introduces judgment thresholds that didn't exist at the time of Item 9's "no epsilons exist" finding: `_faultEpsilons` (0.005 for the three torso metrics, 0.5° for posture), `_tempoEpsilon` (0.05), and `tempoIdeal` (3.0). These are *not* detection thresholds (they classify improved/worsened/unchanged, not flagged/OK), so they don't violate the "don't change detection logic" rule — but they are un-validated against any Python reference (see A1) and worth a domain sanity check. Flagging per the ground rule; not changed.
+
+Minor domain note: the "lower is always better" trend rule is correct for all four faults given how they're flagged, but reverse pivot is a *signed* metric — an increasingly negative value reads as "improved" without bound, even though extreme forward lean isn't better golf. Only the positive direction is ever flagged, so this doesn't affect verdicts; note it if the comparison text is ever shown for large-magnitude negatives.
+
+### A6 🟡 Unbounded history growth
+
+Every `append()` rewrites the full file and history has no cap/rotation. Fine for an MVP; note it before histories get long (O(n) rewrite per swing). A simple cap (keep last N) or append-friendly format would scale better.
+
+### A7 🟢 No issues found
+
+- **No unused imports** in the three files; `export 'drill_recommender.dart' show faultLabels;` is used by the model/view.
+- **Naming/JSON keys** are consistent (snake_case JSON: `tempo_ratio`, `timestamp`, `faults`, …), matching the project convention and a future Python side.
+- **NaN handling** is correct: `buildSession` stores non-finite metrics as null, and `SwingComparison.between` skips faults/tempo with null values.
+- **Function length:** all functions/`build()` methods are ≤ ~50 lines; the file is well split into small classes.
+- **Test coverage (pure logic) is strong:** `swing_history_test.dart` covers trends, threshold crossings, per-fault epsilon, new/fixed collection, tempo direction, null-skip, JSON round-trip, `buildSession` non-finite→null, and store append/load round-trip. **Gaps** (align with A2/A3): no corrupt-file `load()` test and no crash-safety/atomic-write test; the widget is untested (typical for UI).
+
+### Addendum priority summary
+
+1. 🔴 Resolve the missing `src/swing_history.py` — write it (recommended) or fix the docs (A1).
+2. 🟠 Make `load()` self-healing on corrupt files + atomic writes (A2, A3) — the two together prevent silent permanent history loss.
+3. 🟠 Wire up or remove the `targeting`/focus path (A4).
+4. 🟡 Sanity-check the new epsilons; consider history size cap (A5, A6).
+
+**Applied in this addendum pass:** nothing changed — audit only, as requested.
