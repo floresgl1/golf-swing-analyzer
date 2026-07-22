@@ -115,6 +115,13 @@ Design notes:
 - Design decision: require two separate recordings, or guide the user through a two-angle capture flow?
 - Alternative: monocular 3D pose lifting (e.g., MotionBERT, MHFormer) to estimate rotation from a single view — adds significant complexity
 
+### Camera Angle Handling
+- Current detectors validated for **side-on (down-the-line) view only**
+- Face-on view causes false positives: head sway reads 0.55 due to rotation appearing as lateral movement
+- Loss of posture measurements differ significantly between angles (different projection)
+- Reverse pivot and early extension passed from face-on
+- Options: auto-detect camera angle, restrict to side-on with user guidance, or angle-specific logic
+
 ### User Experience
 - **Video playback**: slow-motion scrubbing with phase markers and fault annotations overlaid
 - **Drill media**: short video clips or animations demonstrating each drill (replace text-only descriptions)
