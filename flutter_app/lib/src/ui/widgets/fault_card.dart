@@ -5,12 +5,20 @@ import '../../models/swing_analysis.dart';
 /// A single fault verdict: a colored status chip, the measured detail, and (when
 /// flagged) the recommended drills nested beneath it.
 class FaultCard extends StatelessWidget {
-  const FaultCard({super.key, required this.verdict, required this.drills});
+  const FaultCard({
+    super.key,
+    required this.verdict,
+    required this.drills,
+    this.isFocus = false,
+  });
 
   final FaultVerdict verdict;
 
   /// Drill tiles to show under a flagged fault (empty when OK).
   final List<Widget> drills;
+
+  /// Whether this is the fault the golfer chose to work on this swing.
+  final bool isFocus;
 
   @override
   Widget build(BuildContext context) {
@@ -20,11 +28,34 @@ class FaultCard extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      shape: isFocus
+          ? RoundedRectangleBorder(
+              side: BorderSide(color: scheme.primary, width: 1.5),
+              borderRadius: BorderRadius.circular(12),
+            )
+          : null,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (isFocus) ...[
+              Row(
+                children: [
+                  Icon(Icons.center_focus_strong,
+                      size: 16, color: scheme.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Your focus this swing',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
             Row(
               children: [
                 Icon(

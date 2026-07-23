@@ -6,7 +6,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../analysis/swing_history.dart';
 import '../models/drill.dart';
-import '../models/swing_analysis.dart';
 import '../services/swing_analyzer.dart';
 import 'report_screen.dart';
 
@@ -17,10 +16,14 @@ class AnalyzingScreen extends StatefulWidget {
     super.key,
     required this.videoPath,
     required this.drills,
+    this.targeting,
   });
 
   final String videoPath;
   final List<Drill> drills;
+
+  /// The fault the golfer chose to work on, or null for a full swing check.
+  final String? targeting;
 
   @override
   State<AnalyzingScreen> createState() => _AnalyzingScreenState();
@@ -43,6 +46,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
     try {
       final analysis = await _analyzer.analyze(
         widget.videoPath,
+        targeting: widget.targeting,
         onProgress: (stage, fraction) {
           if (!mounted) return;
           setState(() {

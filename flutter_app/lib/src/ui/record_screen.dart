@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import '../analysis/swing_history.dart';
 import '../models/drill.dart';
 import 'analyzing_screen.dart';
 
@@ -24,6 +25,10 @@ class _RecordScreenState extends State<RecordScreen> {
   CameraController? _controller;
   Future<void>? _initFuture;
   bool _isRecording = false;
+
+  /// The fault the golfer wants to work on this swing, or null for a full swing
+  /// check. Every detector still runs; this only sets the report's focus.
+  String? _targeting;
 
   @override
   void initState() {
@@ -63,6 +68,7 @@ class _RecordScreenState extends State<RecordScreen> {
           builder: (_) => AnalyzingScreen(
             videoPath: file.path,
             drills: widget.drills,
+            targeting: _targeting,
           ),
         ),
       );
@@ -89,7 +95,13 @@ class _RecordScreenState extends State<RecordScreen> {
                     child: Text('Camera error: ${snapshot.error}'),
                   );
                 }
-                return _CameraPreviewWithHint(controller: _controller!);
+                return _CameraPreviewWithHint(
+                  controller: _controller!,
+                  targeting: _targeting,
+                  onTargetingChanged: _isRecording
+                      ? null
+                      : (value) => setState(() => _targeting = value),
+                );
               },
             ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
@@ -106,9 +118,18 @@ class _RecordScreenState extends State<RecordScreen> {
 }
 
 class _CameraPreviewWithHint extends StatelessWidget {
-  const _CameraPreviewWithHint({required this.controller});
+  const _CameraPreviewWithHint({
+    required this.controller,
+    required this.targeting,
+    required this.onTargetingChanged,
+  });
 
   final CameraController controller;
+  final String? targeting;
+
+  /// Called when the golfer picks a focus fault; null disables the picker (e.g.
+  /// while recording).
+  final ValueChanged<String?>? onTargetingChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -120,20 +141,81 @@ class _CameraPreviewWithHint extends StatelessWidget {
           left: 16,
           right: 16,
           top: 16,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'Frame your whole body, down-the-line. Record one full swing, '
-              'then tap stop to analyze.',
-              style: TextStyle(color: Colors.white),
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Frame your whole body, down-the-line. Record one full swing, '
+                  'then tap stop to analyze.',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _TargetSelector(
+                value: targeting,
+                onChanged: onTargetingChanged,
+              ),
+            ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Lets the golfer name the one fault they're working on this swing. Defaults
+/// to "Full swing check" (null), which runs the report with no focus.
+class _TargetSelector extends StatelessWidget {
+  const _TargetSelector({required this.value, required this.onChanged});
+
+  final String? value;
+  final ValueChanged<String?>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.center_focus_strong, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          const Text('Working on', style: TextStyle(color: Colors.white70)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                value: value,
+                isExpanded: true,
+                dropdownColor: Colors.black87,
+                iconEnabledColor: Colors.white,
+                style: const TextStyle(color: Colors.white),
+                onChanged: onChanged,
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Full swing check'),
+                  ),
+                  for (final id in faultIds)
+                    DropdownMenuItem<String?>(
+                      value: id,
+                      child: Text(faultLabels[id] ?? id),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
