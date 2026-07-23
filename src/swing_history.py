@@ -81,13 +81,51 @@ def build_session(fault_report, tempo=None, targeting=None):
     }
 
 
+def _check_session(session, index):
+    """Raise ValueError if `session` is too malformed to compare.
+
+    Only the fields compare_sessions()/print_comparison() actually read are
+    checked, and only for the known faults they iterate -- extra keys, unknown
+    fault ids, and a missing tempo or targeting are left alone, since that code
+    already tolerates them. This runs inside _read_history's recovery path so a
+    structurally broken session (well-formed JSON but, say, a fault dict missing
+    'value') is backed up and recovered from rather than raising KeyError or
+    TypeError later, out where nothing catches it.
+    """
+    where = f"session {index}"
+    if not isinstance(session, dict):
+        raise ValueError(f"{where} is not an object")
+
+    faults = session.get('faults', {})
+    if not isinstance(faults, dict):
+        raise ValueError(f"{where} 'faults' is not an object")
+    for fault_id in FAULT_METRICS:
+        result = faults.get(fault_id)
+        if not result:
+            continue  # absent/empty -- compare_sessions skips it, never reads in
+        if not isinstance(result, dict):
+            raise ValueError(f"{where} fault '{fault_id}' is not an object")
+        for key in ('value', 'threshold', 'flagged'):
+            if key not in result:
+                raise ValueError(f"{where} fault '{fault_id}' is missing '{key}'")
+        if result['value'] is not None and not isinstance(result['value'], (int, float)):
+            raise ValueError(f"{where} fault '{fault_id}' has a non-numeric value")
+        if not isinstance(result['threshold'], (int, float)):
+            raise ValueError(f"{where} fault '{fault_id}' has a non-numeric threshold")
+
+    ratio = session.get('tempo_ratio')
+    if ratio is not None and not isinstance(ratio, (int, float)):
+        raise ValueError(f"{where} has a non-numeric tempo_ratio")
+
+
 def _read_history(path):
     """Read the history file into a {'sessions': [...]} dict.
 
     Returns an empty history when the file does not exist. If the file exists
-    but is corrupt (unreadable or malformed JSON, or the wrong shape), it is
-    renamed to <name>.corrupt.bak and an empty history is returned, so a
-    damaged file never leaves the caller stuck -- the run just starts fresh.
+    but is corrupt -- unreadable, malformed JSON, the wrong shape, or holding a
+    structurally malformed session -- it is renamed to <name>.corrupt.bak and an
+    empty history is returned, so a damaged file never leaves the caller stuck:
+    the run just starts fresh.
     """
     path = Path(path)
     if not path.exists():
@@ -97,6 +135,8 @@ def _read_history(path):
             data = json.load(f)
         if not isinstance(data, dict) or not isinstance(data.get('sessions'), list):
             raise ValueError("history is not a {'sessions': [...]} object")
+        for i, session in enumerate(data['sessions']):
+            _check_session(session, i)
     except (OSError, ValueError) as e:
         backup = path.with_suffix(path.suffix + '.corrupt.bak')
         try:
