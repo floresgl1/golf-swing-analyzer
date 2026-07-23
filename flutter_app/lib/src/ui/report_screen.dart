@@ -36,9 +36,10 @@ class ReportScreen extends StatelessWidget {
         children: [
           _TempoSummary(analysis: analysis),
           const _SectionHeader('Fault check'),
-          for (final verdict in analysis.faults)
+          for (final verdict in analysis.faultsByFocus)
             FaultCard(
               verdict: verdict,
+              isFocus: verdict.id == analysis.targeting,
               drills: [
                 for (final drill in analysis.recommendations[verdict.id] ??
                     const [])

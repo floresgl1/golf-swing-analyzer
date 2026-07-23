@@ -51,8 +51,13 @@ class SwingAnalyzer {
   final PoseEstimator _poseEstimator;
 
   /// Analyze the recorded video at [videoPath]. [onProgress] is optional.
+  ///
+  /// [targeting] is the fault the golfer chose to work on (a fault id), or null
+  /// for a full swing check. All four detectors run either way; targeting only
+  /// marks the report's focus and is recorded in the swing history.
   Future<SwingAnalysis> analyze(
     String videoPath, {
+    String? targeting,
     ProgressCallback? onProgress,
   }) async {
     onProgress?.call(AnalysisStage.extractingFrames, 0);
@@ -71,7 +76,7 @@ class SwingAnalyzer {
       }
 
       onProgress?.call(AnalysisStage.computingReport, 1);
-      return _buildReport(features, extracted.fps);
+      return _buildReport(features, extracted.fps, targeting);
     } finally {
       // Clean up the extracted JPEGs regardless of outcome.
       if (extracted.workingDir.existsSync()) {
@@ -80,7 +85,11 @@ class SwingAnalyzer {
     }
   }
 
-  SwingAnalysis _buildReport(List<FrameFeatures> features, double fps) {
+  SwingAnalysis _buildReport(
+    List<FrameFeatures> features,
+    double fps,
+    String? targeting,
+  ) {
     // Assemble parallel arrays, matching the lists built in faults.main().
     final eyeX = [for (final f in features) f.eyeX];
     final eyeY = [for (final f in features) f.eyeY];
@@ -150,12 +159,14 @@ class SwingAnalyzer {
       frameCount: features.length,
       faults: faultVerdicts,
       recommendations: recommendations,
+      targeting: targeting,
       session: buildSession(
         head: head,
         pivot: pivot,
         extension: extension,
         posture: posture,
         tempo: tempo,
+        targeting: targeting,
       ),
     );
   }
