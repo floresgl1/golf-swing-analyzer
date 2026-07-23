@@ -77,20 +77,33 @@ class FaultResult {
   final double threshold;
   final bool flagged;
 
+  /// The raw map this was parsed from, kept so keys the model doesn't know
+  /// (e.g. a field a future writer adds) survive a load/save round-trip. Empty
+  /// for instances built in code rather than read from JSON.
+  final Map<String, dynamic> _source;
+
   const FaultResult({
     required this.value,
     required this.threshold,
     required this.flagged,
-  });
+    Map<String, dynamic> source = const <String, dynamic>{},
+  }) : _source = source;
 
   factory FaultResult.fromJson(Map<String, dynamic> json) => FaultResult(
         value: (json['value'] as num?)?.toDouble(),
         threshold: (json['threshold'] as num).toDouble(),
         flagged: json['flagged'] as bool,
+        source: json,
       );
 
-  Map<String, dynamic> toJson() =>
-      {'value': value, 'threshold': threshold, 'flagged': flagged};
+  /// The raw source with the typed fields merged over it, so unknown keys are
+  /// preserved while the modeled fields stay canonical.
+  Map<String, dynamic> toJson() => {
+        ..._source,
+        'value': value,
+        'threshold': threshold,
+        'flagged': flagged,
+      };
 }
 
 /// One analyzed swing: every fault measurement plus tempo, with an optional
@@ -101,12 +114,18 @@ class SwingSession {
   final double? tempoRatio;
   final String? targeting;
 
+  /// The raw map this was parsed from, kept so top-level keys the model doesn't
+  /// know (e.g. a field a future Python writer adds) survive a load/save
+  /// round-trip. Empty for instances built in code rather than read from JSON.
+  final Map<String, dynamic> _source;
+
   const SwingSession({
     required this.timestamp,
     required this.faults,
     this.tempoRatio,
     this.targeting,
-  });
+    Map<String, dynamic> source = const <String, dynamic>{},
+  }) : _source = source;
 
   factory SwingSession.fromJson(Map<String, dynamic> json) => SwingSession(
         timestamp: DateTime.parse(json['timestamp'] as String),
@@ -116,9 +135,14 @@ class SwingSession {
         ),
         tempoRatio: (json['tempo_ratio'] as num?)?.toDouble(),
         targeting: json['targeting'] as String?,
+        source: json,
       );
 
+  /// The raw source with the typed fields merged over it -- faults are
+  /// re-emitted so each fault's own unknown keys are preserved too -- so
+  /// nothing a reader didn't model is dropped on write.
   Map<String, dynamic> toJson() => {
+        ..._source,
         'timestamp': timestamp.toIso8601String(),
         'faults': faults.map((id, result) => MapEntry(id, result.toJson())),
         'tempo_ratio': tempoRatio,
