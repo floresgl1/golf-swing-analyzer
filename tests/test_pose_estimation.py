@@ -14,10 +14,17 @@ Requirements to run:
   * MediaPipe model at data/pose_landmarker.task (a large binary, gitignored and
     not committed). The test SKIPS when it is absent.
 
-The golden (tests/fixtures/pose_landmarks_golden.json) was generated in this
-environment with the pinned mediapipe==0.10.35 and the *lite* Pose Landmarker
-model. Landmark values are model-variant specific, so if you run this against a
-different model file the snapshot will differ; regenerate the golden with:
+The golden (tests/fixtures/pose_landmarks_golden.json) was generated with the
+pinned mediapipe==0.10.35 and the *heavy* Pose Landmarker model (float16,
+~30.6 MB) -- the variant the README instructs downloading and that the src/
+pipeline (and the fault thresholds calibrated through it) actually use. Landmark
+values are model-variant specific: a lite/full model shifts landmarks by tens of
+pixels, so the golden MUST be regenerated against the production model. A prior
+golden was accidentally captured with the *lite* model, which surfaced as a
+whole-body landmark diff; the HEAVY_MIN_BYTES guard below now skips (with a clear
+message) rather than failing cryptically when the wrong variant is installed.
+
+Regenerate the golden with:
 
     UPDATE_POSE_GOLDEN=1 pytest tests/test_pose_estimation.py
 
@@ -33,6 +40,11 @@ FIXTURES = Path(__file__).resolve().parent / 'fixtures'
 SAMPLE_VIDEO = FIXTURES / 'sample_swing.mp4'
 GOLDEN = FIXTURES / 'pose_landmarks_golden.json'
 MODEL = Path(__file__).resolve().parent.parent / 'data' / 'pose_landmarker.task'
+
+# The golden is variant-specific and was built against the HEAVY model (~30.6 MB).
+# lite (~5 MB) and full (~9 MB) produce landmarks that differ by tens of pixels.
+# Guard on file size so a wrong variant yields a clear skip, not a scary diff.
+HEAVY_MIN_BYTES = 20 * 1024 * 1024
 
 # Landmark detection is deterministic on CPU for a fixed model + input (verified
 # to 6 decimals run-to-run); round to 5 for a small safety margin.
@@ -89,6 +101,12 @@ requires_model = pytest.mark.skipif(
 @requires_model
 def test_pose_landmarks_match_golden():
     assert SAMPLE_VIDEO.exists(), f"missing sample video fixture {SAMPLE_VIDEO}"
+    size = MODEL.stat().st_size
+    if size < HEAVY_MIN_BYTES:
+        pytest.skip(
+            f"pose model is {size/1e6:.1f} MB -- the golden was built against the "
+            f"heavy variant (~30.6 MB). Install the heavy model (see README) or "
+            f"regenerate the golden for your variant with UPDATE_POSE_GOLDEN=1.")
     landmarks = _extract_landmarks(SAMPLE_VIDEO)
 
     if os.environ.get('UPDATE_POSE_GOLDEN') or not GOLDEN.exists():
