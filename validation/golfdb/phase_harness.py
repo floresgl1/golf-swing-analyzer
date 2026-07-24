@@ -15,9 +15,11 @@ Scores detect_phases at TWO smoothing configs from a single pose pass:
     (it collapses on low-clarity clips, e.g. id 0: off_top -71 vs -3 at smooth=5).
 This corrects the earlier "validate native" note -- see README.
 
-Stamps the pose model sha256 on every row. Applies a PRE-REGISTERED clarity gate
-(see README / CLARITY_MIN) so degraded-trajectory clips are dropped rather than
-trusted, and reports the drop rate + offsets both gated and ungated.
+Stamps the pose model sha256 on every row. Offsets are SPLIT by capture type
+(real-time vs slow-mo) and NORMALIZED by swing span -- raw frame-offsets are not
+comparable across the two (slow-mo swings span ~8x more frames). The clarity gate
+was RETIRED after the full run: it measured nothing (r~-0.06 with Top error). See
+README "Stage 2a -- RESULTS".
 
   python validation/golfdb/phase_harness.py --ids 0 2 4 6 12   # calibration
   python validation/golfdb/phase_harness.py --all              # full run
@@ -43,14 +45,13 @@ VID_DIR = HERE / "cache" / "videos_160"
 RESULTS = HERE / "phase_results.csv"
 MODEL = Path("data/pose_landmarker.task")
 
-# PRE-REGISTERED clarity gate -- swing amplitude in units of per-frame jitter,
-# clarity = (max-min of 5-smoothed height) / std(raw height - 5-smoothed height).
-# Calibrated on the 5 spot-check clips BEFORE the full run (see README): they span
-# clarity 13.3-41.3 and all detect Top/Impact well at smooth=5; the lowest (id 0,
-# 13.3, visible address spikes) is our marginal-but-working case. Gate at 10 ->
-# just below it, so clips at least that clean are admitted and clearly-worse ones
-# are flagged. Do NOT tune against the full-run offsets -- that would be circular.
-CLARITY_MIN = 10.0
+# clarity = (max-min of 5-smoothed height) / std(raw - 5-smoothed). RETIRED as a
+# gate: pre-registered at 10 on 5 clips, but on the full 585 it never dips below
+# 12.5 (0% dropped) and does not predict error (r~-0.06). Kept computed/recorded
+# only as a negative finding -- the real Top-failure predictor is pre-address
+# length, and the fix removes the need for any trajectory-quality gate (see
+# README). Do not re-introduce a clarity/plausibility gate; that is the P0.2
+# address-onset fix in weaker form.
 SMOOTHINGS = (5, 1)   # headline first
 
 
@@ -119,7 +120,9 @@ def run(clips, model_hash):
         row = {"id": cid, "player": r["player"], "slow": int(r["slow"]),
                "fps": round(fps, 3), "pose_rate": float(np.mean(~np.isnan(wy))),
                "wrist_vis_med": float(np.nanmedian(vis)) if np.isfinite(vis).any() else np.nan,
-               "clarity": clr, "model_sha256": model_hash}
+               "clarity": clr, "model_sha256": model_hash,
+               "swing_span_frames": int(r["swing_span_frames"]),
+               "pre_address_frames": int(r["pre_address_frames"])}
         ok = False
         for sm in SMOOTHINGS:                    # one pose pass, two detect_phases
             ph = detect_phases(wy, smooth=sm)
@@ -141,53 +144,61 @@ def _dist(s):
             f"p5/p95=[{s.quantile(.05):+.0f},{s.quantile(.95):+.0f}]")
 
 
+def _pctcol(g, e, sm):
+    return 100 * g[f"off_{e}_s{sm}"] / g["span"]
+
+
 def report(df):
-    det = df[df["detected"]]
-    print(f"\nclips: {len(df)}  detect_phases ok: {len(det)}  failed: {len(df)-len(det)}")
-    gate = det["clarity"] >= CLARITY_MIN
-    dropped = (~gate).sum()
-    print(f"CLARITY gate (>= {CLARITY_MIN}): pass {gate.sum()}  drop {dropped} "
-          f"({100*dropped/max(len(det),1):.0f}%)  "
-          f"<- headline agreement describes the {gate.sum()} passing clips")
+    # swing_span / pre_address are needed for normalization + the predictor;
+    # merge from the manifest for result CSVs written before those columns existed.
+    missing = {"swing_span_frames", "pre_address_frames"} - set(df.columns)
+    if missing:
+        man = pd.read_csv(MANIFEST)[["id", "swing_span_frames", "pre_address_frames"]]
+        df = df.merge(man, on="id", how="left")
+    df = df.copy()
+    df["span"] = df["swing_span_frames"].clip(lower=1)
+    det = df[df["detected"]].copy()
+    rt, sm_ = det[det["slow"] == 0], det[det["slow"] == 1]
+
+    print(f"\ndetect_phases vs GolfDB labels: {len(df)} clips, {len(df)-len(det)} failed")
+    print("  offsets NORMALIZED by swing span and SPLIT by capture type -- raw frames")
+    print("  are not comparable across real-time vs slow-mo (~8x frame-scale). The")
+    print("  clarity gate was RETIRED (measured nothing); see README.")
 
     for sm in SMOOTHINGS:
-        tag = "HEADLINE, production-shape" if sm == 5 else "native/unsmoothed (load-bearing check)"
-        print(f"\n######## smooth={sm}  ({tag}) ########")
-        for name, sub in (("ALL detected", det), (f"GATED (clarity>={CLARITY_MIN})", det[gate])):
-            print(f"  -- {name} --")
-            for e in ("top", "impact", "finish"):
-                col = f"off_{e}_s{sm}"
-                if col in sub:
-                    print(f"    {e:7} offset  {_dist(sub[col])}")
+        tag = "HEADLINE, production-shape" if sm == 5 else "native, load-bearing contrast"
+        print(f"\n######## smooth={sm}  ({tag}) -- offset as % of swing span ########")
+        for e in ("top", "impact", "finish"):
+            if f"off_{e}_s{sm}" not in det:
+                continue
+            for gname, g in (("real-time", rt), ("slow-mo", sm_)):
+                print(f"  {e:7} {gname:10} {_dist(_pctcol(g, e, sm))}")
 
-    # Finish: definitional vs detection-error (at the headline smooth=5). A
-    # definitional gap is tight & clarity-independent; a detection error scatters
-    # more on low-clarity clips.
-    print("\n--- FINISH offset vs clarity @smooth=5 (definitional check) ---")
-    d = det.dropna(subset=["off_finish_s5", "clarity"])
-    if len(d) > 5:
-        rho = np.corrcoef(d["clarity"], d["off_finish_s5"].abs())[0, 1]
-        med = d["clarity"].median()
-        lo, hi = d[d["clarity"] < med]["off_finish_s5"], d[d["clarity"] >= med]["off_finish_s5"]
-        print(f"  corr(|finish offset|, clarity) = {rho:+.2f}  "
-              f"(strong negative => degraded clips worse => NOT purely definitional)")
-        print(f"  low-clarity half : mean={lo.mean():+.1f} sd={lo.std():.1f} (n={len(lo)})")
-        print(f"  high-clarity half: mean={hi.mean():+.1f} sd={hi.std():.1f} (n={len(hi)})")
-    # TOP/IMPACT vs clarity @smooth=5 -- the kernel's-limit check. At 160px the
-    # kernel absorbs tracking artifact, so residual offset partly reflects how
-    # noisy the clip was: if |offset| rises as clarity falls, that's where the
-    # approach degrades (not just a gate sanity check).
-    print("\n--- TOP/IMPACT offset vs clarity @smooth=5 (kernel's-limit check) ---")
-    for e in ("top", "impact"):
-        d = det.dropna(subset=[f"off_{e}_s5", "clarity"])
-        if len(d) < 6:
-            continue
-        rho = np.corrcoef(d["clarity"], d[f"off_{e}_s5"].abs())[0, 1]
-        med = d["clarity"].median()
-        lo, hi = d[d["clarity"] < med][f"off_{e}_s5"], d[d["clarity"] >= med][f"off_{e}_s5"]
-        print(f"  {e:7}: corr(|offset|,clarity)={rho:+.2f}  "
-              f"low-clarity sd={lo.std():.1f}  high-clarity sd={hi.std():.1f}  "
-              f"(strong neg => error rises as clarity falls => kernel's limit)")
+    # Finish: definitional gap should be consistent across groups once normalized.
+    print("\n--- FINISH: definitional gap (normalized, @smooth=5) ---")
+    for gname, g in (("real-time", rt), ("slow-mo", sm_)):
+        p = _pctcol(g, "finish", 5)
+        print(f"  {gname:10}: median {p.median():+.1f}% of swing")
+    print("  consistent across groups => our wrist-peak finish precedes GolfDB's")
+    print("  posed Finish by a fixed fraction of the swing => definitional, not fps.")
+
+    # Pre-address = the real Top-failure predictor, checked WITHIN each group
+    # (pooling inflates it -- same lesson the finish result taught).
+    print("\n--- TOP-failure predictor: pre-address length, WITHIN group (@smooth=5) ---")
+    for gname, g in (("pooled", det), ("real-time", rt), ("slow-mo", sm_)):
+        ap = _pctcol(g, "top", 5).abs()
+        r = ap.corr(g["pre_address_frames"])
+        big = g[ap > 10]
+        clean = g[ap <= 10]
+        print(f"  {gname:10}: corr(|Top%|, pre_addr)={r:+.2f}  |Top|>10%swing: "
+              f"{len(big)}/{len(g)} ({100*len(big)/len(g):.0f}%)  fail pre-addr median="
+              f"{big['pre_address_frames'].median():.0f} vs clean {clean['pre_address_frames'].median():.0f}")
+    print("  real-time: pre-address drives it (the P0.2 address-onset bound fixes it).")
+    print("  slow-mo:   r~0 -- a SEPARATE, larger failure population, still unexplained.")
+
+    # Clarity: retired. Recorded as a negative finding so it is not re-proposed.
+    rc = _pctcol(det, "top", 5).abs().corr(det["clarity"])
+    print(f"\n--- CLARITY (RETIRED): corr(|Top%|, clarity)={rc:+.2f} -- measured nothing ---")
 
 
 def main():

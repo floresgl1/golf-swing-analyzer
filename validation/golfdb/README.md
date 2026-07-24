@@ -198,11 +198,21 @@ showing through, and it tells us where the 160 px approach degrades. The harness
 now reports `corr(|Top offset|, clarity)` and `corr(|Impact offset|, clarity)` at
 smooth=5 alongside the Finish check.
 
+> **→ TESTED, NULL (see Stage 2a RESULTS).** This hypothesis did not hold: on 585
+> clips `corr(|Top%|, clarity) = −0.06`. The kernel's limit, if it has one, is not
+> visible through clarity — the real Top-failure predictor was pre-address length.
+> The reasoning above is kept for the record, not because it panned out.
+
 (Do not upsample to fake 240 fps — the
 30 fps labels/source are quantized to ±1 frame, so a finer kernel would be false
 precision.)
 
-### PRE-REGISTERED clarity gate (decided BEFORE the full run)
+### PRE-REGISTERED clarity gate (decided BEFORE the full run) — RETIRED after it
+
+> **RETIRED as a negative finding (see Stage 2a RESULTS).** The gate dropped 0% on
+> the full run (clarity never fell below 12.5) and did not predict error. Kept
+> below as the record of what was pre-registered and why it was dropped — the
+> discipline (pre-register, then believe the null) is the point.
 
 `clarity = amplitude(5-smoothed height) / std(raw − 5-smoothed)` — swing size in
 units of per-frame jitter. The 5 spot-check clips span **13.3–41.3** and all
@@ -212,6 +222,66 @@ id 0, so clips at least that clean are admitted, clearly-worse ones flagged. The
 full run reports offsets both ungated and gated **and the drop rate**, so if the
 gate excludes a large fraction the headline is honestly "works on the clean
 clips, which are X% of them." Not tuned against the full-run offsets.
+
+## Stage 2a — RESULTS (585 down-the-line clips, smooth=5)
+
+`detect_phases` ran on all 585; 0 failed. `report()` is now FIXED to split by
+capture type and normalize (the initial raw report pooled frame-offsets — a real
+error, corrected). **Two things the corrected analysis established:**
+1. **Frame-offsets are not comparable across real-time vs slow-mo** (slow-mo
+   swings span ~8× more frames), so all offsets below are % of swing span, split
+   by capture type. Pooling them is what made the Finish result look scattered.
+2. **Negative finding — the clarity gate measured nothing, and was retired.** It
+   was pre-registered at ≥10 (an intuitive "trajectory SNR" discriminator), but on
+   585 clips clarity never dips below 12.5 (0% dropped) and does not predict error:
+   `corr(|Top%|, clarity) = −0.06`. Recorded explicitly because clarity is an
+   intuitive thing to reach for — the real predictor was pre-address length, found
+   by looking, not by the pre-registered metric. Do not re-propose a
+   clarity/plausibility gate; that is the P0.2 onset fix in weaker form.
+
+**Typical-case detection is excellent.** Offsets as % of swing span:
+
+| event | real-time median | real-time IQR | slow-mo median | slow-mo IQR |
+|---|---|---|---|---|
+| Top | −1.8% | [−2.6, 0] | −3.0% | [−7.5, −0.9] |
+| Impact | 0% | [−1.7, 0] | −1.4% | [−2.0, −0.4] |
+
+For the bulk of clips `detect_phases` nails Top and Impact to within ~1 frame.
+
+**Finish is definitional — confirmed by the normalization.** Raw frames looked
+scattered (real-time med −9, slow-mo med −32) but that was the fps-scale artifact;
+normalized, both are **≈ −16% of swing** (real-time −16.1%, slow-mo −15.6%). Our
+finish (wrist-height peak) consistently precedes GolfDB's posed Finish by ~16% of
+the swing regardless of fps. A definitional gap, not a detection error.
+
+**The real failure mode: `detect_phases` has no concept of when the swing starts.**
+It searches the *entire clip* for the first tall wrist peak. On the calibration
+clip the clip boundary sat at address and accidentally bounded that search;
+GolfDB clips carry generous lead-in, so the bound vanished and the heuristic
+latches onto spurious wrist motion in the settle — e.g. Jennifer Johnson (id 1203,
+540 pre-address frames): real top at frame 577, detected at **frame 1**; Impact =
+argmin after a false-early top then goes wild.
+
+Checked **within** each capture group (pooling inflated it — the same lesson the
+Finish result taught):
+
+| group | corr(\|Top%\|, pre-address) | \|Top\|>10% swing | failing vs clean pre-address |
+|---|---|---|---|
+| real-time | **+0.35** | 6% | **226 vs 134 frames** |
+| slow-mo | −0.07 | 17% | 36 vs 42 (no difference) |
+
+So the mechanism is **confirmed for real-time** (failing clips have ~1.7× the
+lead-in) but **does not hold for slow-mo**, which has a larger, *separate*
+Top-failure population with a different, unknown driver. The pooled +0.34 overstated
+the generality.
+
+**Verdict:** `detect_phases` is accurate on typical swings (median Top/Impact
+≈ −1 frame) but has a genuine robustness bug — no start bound on top-detection.
+The fix is the **same `detect_address_onset()` as P0.2**: one function supplies
+both the fault-baseline anchor and the top-search lower bound. One function, two
+bugs — see ROADMAP P0.2. Do NOT patch it as a standalone "reject peaks in the
+settle" filter. The slow-mo failure population is a separate open item the onset
+fix will not close.
 
 ### Attrition is not random (README-level caveat for whatever survives)
 
