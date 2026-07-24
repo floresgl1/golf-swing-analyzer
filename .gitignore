@@ -14,6 +14,18 @@ data/videos/
 # Generated outputs
 output/
 
+# Downloaded GolfDB annotation DB (re-fetched by validation/golfdb/screen.py)
+validation/golfdb/cache/
+
+# YouTube-touching tooling -- keep out of public history (ToS-sensitive scraping).
+# screen.py (annotation-only) and the README/manifest stay tracked; these do not.
+validation/golfdb/probe_availability.py
+validation/golfdb/download.py
+
+# Generated validation artifacts (regenerable by the harness scripts)
+validation/golfdb/phase_results.csv
+validation/golfdb/spotcheck_wrist.png
+
 # OS files
 .DS_Store
 Thumbs.db
