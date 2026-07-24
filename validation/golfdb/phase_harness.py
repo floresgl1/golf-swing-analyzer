@@ -194,11 +194,25 @@ def report(df):
               f"{len(big)}/{len(g)} ({100*len(big)/len(g):.0f}%)  fail pre-addr median="
               f"{big['pre_address_frames'].median():.0f} vs clean {clean['pre_address_frames'].median():.0f}")
     print("  real-time: pre-address drives it (the P0.2 address-onset bound fixes it).")
-    print("  slow-mo:   r~0 -- a SEPARATE, larger failure population, still unexplained.")
+    print("  slow-mo:   r~0 -- a SEPARATE population, driven by under-smoothing (clarity")
+    print("             predicts it, r=-0.26 within group; see the CLARITY section).")
 
-    # Clarity: retired. Recorded as a negative finding so it is not re-proposed.
-    rc = _pctcol(det, "top", 5).abs().corr(det["clarity"])
-    print(f"\n--- CLARITY (RETIRED): corr(|Top%|, clarity)={rc:+.2f} -- measured nothing ---")
+    # Clarity: retired as a GATE, but NOT useless. Pooled it looks null because
+    # real-time failures are pre-address-driven (clarity-irrelevant), which washes
+    # out the slow-mo signal -- the same pooling trap as finish and pre-address.
+    # WITHIN slow-mo, low clarity predicts the under-smoothing failures.
+    print("\n--- CLARITY: gate retired, but it predicts the SLOW-MO failures ---")
+    for gname, g in (("pooled", det), ("real-time", rt), ("slow-mo", sm_)):
+        print(f"  {gname:10}: corr(|Top%|, clarity)={_pctcol(g, 'top', 5).abs().corr(g['clarity']):+.2f}")
+    # smooth=1->5 improvement: if slow-mo is under-smoothed, more smoothing helps
+    # it far more than real-time.
+    def _impr(g):
+        return (_pctcol(g, "top", 5).abs() - _pctcol(g, "top", 1).abs()).median()
+    print(f"  smooth1->5 Top |err%| change (neg=more smoothing better): "
+          f"slow-mo {_impr(sm_):+.1f}  real-time {_impr(rt):+.1f}")
+    print("  => slow-mo failures = under-smoothing (kernel covers ~8x less of the swing")
+    print("     at ~8x more frames). Fix = a swing-duration-relative kernel, which also")
+    print("     needs detect_address_onset (know where the swing starts). See P0.2.")
 
 
 def main():

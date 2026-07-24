@@ -231,13 +231,16 @@ error, corrected). **Two things the corrected analysis established:**
 1. **Frame-offsets are not comparable across real-time vs slow-mo** (slow-mo
    swings span ~8× more frames), so all offsets below are % of swing span, split
    by capture type. Pooling them is what made the Finish result look scattered.
-2. **Negative finding — the clarity gate measured nothing, and was retired.** It
-   was pre-registered at ≥10 (an intuitive "trajectory SNR" discriminator), but on
-   585 clips clarity never dips below 12.5 (0% dropped) and does not predict error:
-   `corr(|Top%|, clarity) = −0.06`. Recorded explicitly because clarity is an
-   intuitive thing to reach for — the real predictor was pre-address length, found
-   by looking, not by the pre-registered metric. Do not re-propose a
-   clarity/plausibility gate; that is the P0.2 onset fix in weaker form.
+2. **The clarity GATE was retired — but clarity is not useless (a pooling lesson,
+   twice).** As a gate it failed: clarity never dips below 12.5 (0% dropped), and
+   *pooled* it predicts nothing (`corr(|Top%|, clarity) = −0.06`). I first recorded
+   that as "measured nothing" — wrong, and wrong for the exact reason the Finish
+   result was: **pooling.** Real-time failures are pre-address-driven (clarity
+   irrelevant), which washes out the slow-mo signal. Split by group, clarity is the
+   **slow-mo** failure predictor: `corr(|Top%|, clarity) = −0.26` within slow-mo
+   (−0.02 real-time). Retire the *gate* (dropping clips is the wrong response), but
+   the metric is diagnostic. Do not re-propose it as a gate; that is the P0.2 onset
+   fix in weaker form.
 
 **Typical-case detection is excellent.** Offsets as % of swing span:
 
@@ -272,8 +275,19 @@ Finish result taught):
 
 So the mechanism is **confirmed for real-time** (failing clips have ~1.7× the
 lead-in) but **does not hold for slow-mo**, which has a larger, *separate*
-Top-failure population with a different, unknown driver. The pooled +0.34 overstated
-the generality.
+Top-failure population. The pooled +0.34 overstated the generality.
+
+**The slow-mo driver is under-smoothing** (identified, not open). Slow-mo swings
+span ~8× more frames, so a fixed smooth=5 kernel covers ~8× less of the swing
+(≈1.8% of a 272-frame swing vs ≈15% of a 34-frame real-time swing) — slow-mo is
+effectively under-smoothed, and under-smoothing is what lets spurious peaks
+through (the same finding as the smoothing reversal, in a different guise).
+Evidence: within slow-mo, failures track **low clarity** (`corr = −0.26`; failing
+38.7 vs clean 51.8), and smooth=1→5 helps slow-mo **~4× more** than real-time
+(−6.9 vs −1.6 %swing). This argues the kernel should be defined **relative to
+swing duration**, not absolute time — a third thing `detect_address_onset()`
+enables, since you can't compute swing duration until you know where the swing
+starts. All three consumers point at the same function.
 
 **Verdict:** `detect_phases` is accurate on typical swings (median Top/Impact
 ≈ −1 frame) but has a genuine robustness bug — no start bound on top-detection.
