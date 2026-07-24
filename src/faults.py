@@ -6,7 +6,9 @@ import numpy as np
 import math
 import sys
 
-from swing_phases import detect_phases, require_valid_fps, swing_tempo, LEAD_WRIST
+from swing_phases import (detect_phases, require_valid_fps, swing_tempo, LEAD_WRIST,
+                          BASELINE_FPS, frames_for,
+                          IMPACT_RADIUS_S, DEFAULT_RADIUS_S, ADDRESS_OFFSET_S)
 from drill_recommender import print_recommendations
 from swing_history import (FAULT_METRICS, build_session, load_sessions,
                            save_session, print_comparison)
@@ -44,14 +46,29 @@ EARLY_EXTENSION_THRESHOLD = 0.10
 POSTURE_THRESHOLD = 12.0
 
 
-def _addr_median(a, takeaway):
-    """Median of a[] over the stable setup window ending at the takeaway."""
+def _addr_median(a, takeaway, fps=BASELINE_FPS):
+    """Median of a[] over the setup window ending at the takeaway.
+
+    The look-back is ADDRESS_OFFSET_S resolved to frames at `fps` (10 frames at
+    BASELINE_FPS). KNOWN ISSUE: this window ends at the wrist-defined takeaway,
+    which fires after body motion has already begun, so it does not actually
+    sample a settled address -- see the ADDRESS_OFFSET_S note in swing_phases.py.
+    Preserved as-is pending the address-onset fix (ROADMAP P0).
+    """
+    offset = frames_for(ADDRESS_OFFSET_S, fps)
     a = np.asarray(a, dtype=float)
-    return np.nanmedian(a[max(0, takeaway - 10):takeaway + 1])
+    return np.nanmedian(a[max(0, takeaway - offset):takeaway + 1])
 
 
-def _window_median(a, center, radius=3):
-    """Median of a[] over a small window centered on a frame."""
+def _window_median(a, center, radius_s=DEFAULT_RADIUS_S, fps=BASELINE_FPS):
+    """Median of a[] over a small window centered on a frame.
+
+    `radius_s` is the half-window in seconds resolved to frames at `fps`. Impact
+    windows pass IMPACT_RADIUS_S (kept tight so the post-impact follow-through
+    rise is not averaged in); top/finish windows use the DEFAULT_RADIUS_S
+    default. At BASELINE_FPS these are the historic radius=2 and radius=3.
+    """
+    radius = frames_for(radius_s, fps)
     a = np.asarray(a, dtype=float)
     i0, i1 = max(0, center - radius), min(len(a) - 1, center + radius)
     return np.nanmedian(a[i0:i1 + 1])
@@ -65,7 +82,8 @@ def _spine_tilt(sh, hip):
 
 
 def detect_head_movement(head_x, head_y, torso, phases,
-                         sway_threshold=SWAY_THRESHOLD, dip_threshold=DIP_THRESHOLD):
+                         sway_threshold=SWAY_THRESHOLD, dip_threshold=DIP_THRESHOLD,
+                         fps=BASELINE_FPS):
     """Flag excessive head movement between address and impact.
 
     Head drift is the distance the head point (eye midpoint) travels from its
@@ -79,9 +97,10 @@ def detect_head_movement(head_x, head_y, torso, phases,
     hy = np.asarray(head_y, dtype=float)
     ta, im = phases['takeaway'], phases['impact']
 
-    addr = (_addr_median(hx, ta), _addr_median(hy, ta))
-    scale = _addr_median(torso, ta)
-    imp = (_window_median(hx, im, 2), _window_median(hy, im, 2))
+    addr = (_addr_median(hx, ta, fps), _addr_median(hy, ta, fps))
+    scale = _addr_median(torso, ta, fps)
+    imp = (_window_median(hx, im, IMPACT_RADIUS_S, fps),
+           _window_median(hy, im, IMPACT_RADIUS_S, fps))
 
     dx, dy = imp[0] - addr[0], imp[1] - addr[1]
     dist_px = math.hypot(dx, dy)
@@ -99,7 +118,7 @@ def detect_head_movement(head_x, head_y, torso, phases,
 
 
 def detect_reverse_pivot(head_x, head_y, hip_x, hip_y, torso, phases,
-                         threshold=REVERSE_PIVOT_THRESHOLD):
+                         threshold=REVERSE_PIVOT_THRESHOLD, fps=BASELINE_FPS):
     """Flag a reverse pivot: upper body leaning toward the target at the top.
 
     Measures the head's horizontal position relative to the hips, and how much
@@ -112,10 +131,10 @@ def detect_reverse_pivot(head_x, head_y, hip_x, hip_y, torso, phases,
     hx, hpx = np.asarray(head_x, float), np.asarray(hip_x, float)
     ta, top, fin = phases['takeaway'], phases['top'], phases['finish']
 
-    head_addr, hip_addr = _addr_median(hx, ta), _addr_median(hpx, ta)
-    scale = _addr_median(torso, ta)
-    head_top, hip_top = _window_median(hx, top), _window_median(hpx, top)
-    hip_fin = _window_median(hpx, fin)
+    head_addr, hip_addr = _addr_median(hx, ta, fps), _addr_median(hpx, ta, fps)
+    scale = _addr_median(torso, ta, fps)
+    head_top, hip_top = _window_median(hx, top, fps=fps), _window_median(hpx, top, fps=fps)
+    hip_fin = _window_median(hpx, fin, fps=fps)
 
     target_sign = 1.0 if hip_fin >= hip_addr else -1.0
     lean_shift = (head_top - hip_top) - (head_addr - hip_addr)
@@ -124,12 +143,13 @@ def detect_reverse_pivot(head_x, head_y, hip_x, hip_y, torso, phases,
         'reverse': reverse, 'threshold': threshold,
         'flagged': reverse > threshold, 'target_sign': target_sign,
         'top_frame': top,
-        'head_top_px': (head_top, _window_median(head_y, top)),
-        'hip_top_px': (hip_top, _window_median(hip_y, top)),
+        'head_top_px': (head_top, _window_median(head_y, top, fps=fps)),
+        'hip_top_px': (hip_top, _window_median(hip_y, top, fps=fps)),
     }
 
 
-def detect_early_extension(hip_y, torso, phases, threshold=EARLY_EXTENSION_THRESHOLD):
+def detect_early_extension(hip_y, torso, phases, threshold=EARLY_EXTENSION_THRESHOLD,
+                           fps=BASELINE_FPS):
     """Flag early extension: the pelvis thrusting up/toward the ball downswing.
 
     Measured as how far the hip midpoint rises from address to impact, as a
@@ -141,9 +161,9 @@ def detect_early_extension(hip_y, torso, phases, threshold=EARLY_EXTENSION_THRES
         return None
     hy = np.asarray(hip_y, float)
     ta, im = phases['takeaway'], phases['impact']
-    hip_addr = _addr_median(hy, ta)
-    hip_impact = _window_median(hy, im, 2)
-    scale = _addr_median(torso, ta)
+    hip_addr = _addr_median(hy, ta, fps)
+    hip_impact = _window_median(hy, im, IMPACT_RADIUS_S, fps)
+    scale = _addr_median(torso, ta, fps)
     rise = (hip_addr - hip_impact) / scale if scale else float('nan')  # + = rose
     return {
         'rise': rise, 'threshold': threshold, 'flagged': rise > threshold,
@@ -151,7 +171,8 @@ def detect_early_extension(hip_y, torso, phases, threshold=EARLY_EXTENSION_THRES
     }
 
 
-def detect_loss_of_posture(sh_x, sh_y, hip_x, hip_y, phases, threshold=POSTURE_THRESHOLD):
+def detect_loss_of_posture(sh_x, sh_y, hip_x, hip_y, phases, threshold=POSTURE_THRESHOLD,
+                           fps=BASELINE_FPS):
     """Flag loss of posture: the spine's forward bend straightening address->impact.
 
     Measured as the drop in spine tilt from vertical, in degrees; a large
@@ -160,10 +181,10 @@ def detect_loss_of_posture(sh_x, sh_y, hip_x, hip_y, phases, threshold=POSTURE_T
     if not phases:
         return None
     ta, im = phases['takeaway'], phases['impact']
-    sh_addr = (_addr_median(sh_x, ta), _addr_median(sh_y, ta))
-    hip_addr = (_addr_median(hip_x, ta), _addr_median(hip_y, ta))
-    sh_imp = (_window_median(sh_x, im), _window_median(sh_y, im))
-    hip_imp = (_window_median(hip_x, im), _window_median(hip_y, im))
+    sh_addr = (_addr_median(sh_x, ta, fps), _addr_median(sh_y, ta, fps))
+    hip_addr = (_addr_median(hip_x, ta, fps), _addr_median(hip_y, ta, fps))
+    sh_imp = (_window_median(sh_x, im, fps=fps), _window_median(sh_y, im, fps=fps))
+    hip_imp = (_window_median(hip_x, im, fps=fps), _window_median(hip_y, im, fps=fps))
     tilt_addr = _spine_tilt(sh_addr, hip_addr)
     tilt_impact = _spine_tilt(sh_imp, hip_imp)
     return {
@@ -216,6 +237,12 @@ def main():
 
     with vision.PoseLandmarker.create_from_options(options) as landmarker:
         cap = cv2.VideoCapture(VIDEO_PATH)
+        # CONTAINER fps -- valid for the tempo ratio (frame-based) and timestamps
+        # only. It is NOT the CAPTURE fps the fault/phase windows scale with; for
+        # slow-mo clips they differ (see BASELINE_FPS notes in swing_phases.py).
+        # The detectors below are left on their BASELINE_FPS default until the
+        # corpus supplies a real capture_fps as metadata -- do not pass this fps
+        # into detect_phases or the detectors.
         fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), VIDEO_PATH)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

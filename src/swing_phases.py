@@ -18,6 +18,72 @@ LEAD_WRIST = LEFT_WRIST if HANDEDNESS == 'right' else RIGHT_WRIST
 LEAD_SIDE = 'Left' if HANDEDNESS == 'right' else 'Right'
 
 
+# --------------------------------------------------------------------------- #
+# Frame-rate-invariant windowing config
+#
+# Every smoothing/median window in the pipeline is a physical DURATION, but the
+# code historically hard-coded it as a frame COUNT (smooth=5, radius=2, ...). A
+# frame count only maps to a fixed duration at one frame rate. The calibration
+# clip (data/videos/videoplayback.mp4) reports 30 fps in its container but is an
+# 8x slow-motion render of a ~240 fps capture: its downswing is 64 frames
+# (~0.27 s) and takeaway->finish is 272 frames (~1.13 s). So the original
+# constants were implicitly tuned at 240 fps -- that is BASELINE_FPS, the rate
+# at which frames_for() reproduces them exactly. Deriving the seconds constants
+# from any other baseline (e.g. the container's 30) would be wrong.
+#
+# CONTAINER vs CAPTURE fps: cv2.CAP_PROP_FPS returns the *container* rate (30
+# for the slow-mo clip), NOT the *capture* rate the windows must scale with.
+# The capture rate cannot be recovered from a slow-mo file -- it has to be
+# supplied as metadata (see the capture_fps note in main()). Until that exists,
+# windowing stays pinned to BASELINE_FPS via the fps defaults below, which
+# preserves the tuned behavior. Do NOT feed CAP_PROP_FPS into the windowing: at
+# 30 fps every window collapses to a single frame.
+BASELINE_FPS = 240.0
+
+SMOOTH_WINDOW_S = 5 / BASELINE_FPS     # 0.021 s  <- was smooth=5  (centered kernel)
+IMPACT_RADIUS_S = 2 / BASELINE_FPS     # 0.008 s  <- was radius=2  (impact: kept tight)
+DEFAULT_RADIUS_S = 3 / BASELINE_FPS    # 0.012 s  <- was radius=3  (top/finish/impact-posture)
+
+# KNOWN ISSUE -- do NOT "clean up" this constant to a rounder value ----------
+# ADDRESS_OFFSET_S is the look-back from the wrist-defined takeaway used to
+# sample the "settled" address pose. On the calibration clip this window does
+# NOT sample a settled address. Body motion (shoulder+hip speed) begins at frame
+# 23, but the wrist-defined takeaway fires at frame 55 -- 32 frames / 133 ms
+# later, because in a one-piece takeaway the body rotates before the wrist
+# climbs. The ta-10 window [45,55] therefore sits fully inside the takeaway
+# motion: shoulders already rotated, torso foreshortened ~4%, spine tilt +2.6
+# deg vs settled. That inflates every fault baseline (head sway ~+17%,
+# loss-of-posture straighten +2.6 deg on a 12 deg threshold, ~+22%), and the
+# 0.13 / 12 deg thresholds have SILENTLY ABSORBED that inflation.
+# The fix is not a different offset -- the *anchor* (wrist takeaway) is itself
+# past motion onset, so no window ending at takeaway is settled. It needs a
+# body-motion-onset anchor (detect_address_onset) PLUS recalibration of all four
+# thresholds against the validation corpus. Tracked in ROADMAP.md P0; blocked on
+# the corpus. Preserved as-is (10 frames @240) to keep this refactor behavior-
+# preserving.
+ADDRESS_OFFSET_S = 10 / BASELINE_FPS   # 0.042 s  <- was takeaway-10  (SEE KNOWN ISSUE)
+
+
+def frames_for(seconds, fps, minimum=1, odd=False):
+    """Convert a duration in seconds to a frame count at the given fps.
+
+    Never returns 0: a zero-width window silently disables the thing it is
+    windowing rather than raising, so the result is clamped to `minimum` (>=1).
+    The policy question "is this fps too low to trust?" belongs at the input
+    gate (require_valid_fps / the capture spec), not here -- this stays a total
+    function and the clamp is a safety net, not the gate.
+
+    Pass odd=True for a centered moving-average kernel (the smoothing window):
+    an even-length kernel offsets the average by half a frame, which shifts the
+    minima/maxima detect_phases locates. Even results are bumped up to the next
+    odd frame (never down -- bumping up never under-smooths).
+    """
+    n = int(round(seconds * fps))
+    if odd and n % 2 == 0:
+        n += 1
+    return max(n, minimum)
+
+
 def require_valid_fps(fps, video_path):
     """Return fps as a float, or exit with a clear error when it is unusable.
 
@@ -47,13 +113,19 @@ def _moving_average(a, w):
     return np.convolve(padded, kernel, mode='valid')[:len(a)]
 
 
-def detect_phases(wrist_y, smooth=5):
+def detect_phases(wrist_y, fps=BASELINE_FPS, smooth=None):
     """Locate the key swing events from the lead-wrist vertical trajectory.
 
     Works on wrist *height* (1 - y, so up is positive), which rises through the
     backswing to a peak (top), drops to a valley (impact), then rises again to
     the finish. Returns frame indices for takeaway, top, impact and finish.
+
+    The smoothing kernel is a duration (SMOOTH_WINDOW_S) resolved to an odd
+    frame count at `fps`; at BASELINE_FPS this is the historic smooth=5. Pass an
+    explicit `smooth` to override the frame count directly.
     """
+    if smooth is None:
+        smooth = frames_for(SMOOTH_WINDOW_S, fps, odd=True)
     y = np.array(wrist_y, dtype=float)
     n = len(y)
     idx = np.arange(n)
@@ -128,6 +200,11 @@ def main():
     # Step 2: Create the landmarker and open the video
     with vision.PoseLandmarker.create_from_options(options) as landmarker:
         cap = cv2.VideoCapture('data/videos/videoplayback.mp4')
+        # CONTAINER fps: correct for the tempo RATIO (frame-based, so it cancels)
+        # and for timestamps, but NOT the CAPTURE fps the windows scale with --
+        # for slow-mo clips they differ (see BASELINE_FPS notes). detect_phases
+        # is therefore left on its BASELINE_FPS default; wire a real capture_fps
+        # here once the corpus carries it as metadata.
         fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), 'data/videos/videoplayback.mp4')
         frame_count = 0
 

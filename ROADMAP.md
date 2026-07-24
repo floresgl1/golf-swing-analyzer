@@ -82,11 +82,61 @@ Design notes:
 **Status**: Not started
 **Goal**: Confirm fault thresholds work across diverse swings before building more features.
 
-- Test against 5–10 swing videos: amateur swings, different skill levels, different camera angles, different body types
 - Track false positives (pro swing flagged) and false negatives (obvious fault missed)
 - Adjust thresholds based on findings — document the calibration rationale
 - Consider per-fault sensitivity/specificity if enough test data is available
-- Note: the current thresholds were calibrated against a single tour pro slow-motion video
+- Note: the current thresholds were calibrated against a **single** tour-pro slow-motion clip, and (see P0.2) they have silently absorbed a 15–22% inflation from a flawed address window — recalibration is not optional cleanup, it is required to trust any threshold
+
+#### P0.1 — Corpus collection spec
+Controlled design: lock recording conditions (the only non-golfer axis), vary body type (the thing we're solving), sample across skill (a proxy for fault prevalence). Sample-size floor: **≥30 clean negatives that meet spec** — by the rule of three, zero flags on 30 caps the false-positive rate at ~10%; 5–10 videos proves nothing.
+
+```
+INCLUDE:
+  - camera angle:  side-on / down-the-line, within ~10° of perpendicular
+  - camera height: belt/hand height, on a tripod, locked off (no pan/zoom)
+  - framing:       full swing, feet-to-head in frame address through finish
+  - capture fps:   fixed at ONE rate across the whole corpus, >= 120 fps
+                   *** HARD REQUIREMENT — reasons below, do not relax ***
+  - settled address: >= 0.5 s of stillness before takeaway
+                   *** HARD REQUIREMENT — reasons below, do not relax ***
+  - handedness:    right-handed only (until HANDEDNESS is parameterized)
+  - body type:     deliberately varied
+  - skill level:   mixed, weighted amateur (sampling strategy, not a variable)
+
+EXCLUDE:
+  - face-on / any non-side-on view (known: head sway reads 0.55 from rotation)
+  - variable / ramped slow-motion (destroys the tempo frame ratio at transition)
+  - any cut, edit, or camera reposition within the swing
+  - a second person/moving object in frame (pose[0] can jump to a caddie)
+  - clips that start mid-waggle (no settled window to anchor address to)
+```
+
+Collection logistics (learned, keep):
+- **Over-collect: shoot 45–50 to land 30 clean.** The spec is strict; clips fail screening on framing or a mid-swing waggle and you won't know until review.
+- **Log metadata at capture time, not after** — height, build, handedness, and an eyeball "did the swing look clean?" recorded while the golfer is in front of you. Reconstructing body type from footage is guesswork, and body-type variation is the whole point.
+- **Use the heavy pose model for all collection/validation** (`data/pose_landmarker.task`, ~30.6 MB). Thresholds were calibrated through it; the characterization golden is now pinned to it (see `tests/test_pose_estimation.py`). Do not validate against a lite/full model.
+
+Two requirements are HARD, not stylistic — each is load-bearing for an algorithm we are committed to:
+- **capture fps ≥ 120, fixed.** The downswing is ~0.25 s; at 30 fps that is ~7 frames and ±2 frames of impact-localization error spans the entire 2.5:1–3.5:1 tempo band. Below ~120 fps the smoothing window also rounds to 1 frame (no smoothing). And note **container fps ≠ capture fps**: `cv2.CAP_PROP_FPS` reports 30 for the 240 fps calibration clip. A properly collected real-time ≥120 fps corpus makes CAP_PROP_FPS correct; slow-mo renders do not (see `swing_phases.py` BASELINE_FPS / capture_fps notes). This kills YouTube as a primary source.
+- **≥ 0.5 s settled address.** The address-onset fix (P0.2) locates where the body *leaves* address by the first sustained rise in shoulder+hip speed; it needs settled pre-swing frames to measure a baseline against. A clip that opens mid-waggle cannot be fixed in post.
+
+#### P0.2 — Address-onset fix + threshold recalibration (BLOCKED on P0.1 corpus)
+**This is not "implement `detect_address_onset()`." It is that PLUS a full recalibration pass, and it must not be merged piecemeal.**
+
+Problem (measured on the calibration clip): the address baseline is sampled over `[takeaway-ADDRESS_OFFSET_S, takeaway]`, but the wrist-defined takeaway (frame 55) fires 32 frames / 133 ms *after* body motion begins (frame 23). That window sits fully inside the takeaway motion — torso foreshortened ~4%, spine tilt +2.6°, shoulders rotated — inflating every fault reading (head sway ~+17%, loss-of-posture straighten +2.6° on a 12° threshold). See the `ADDRESS_OFFSET_S` KNOWN ISSUE block in `src/swing_phases.py`.
+
+Required work, in order:
+1. Add `detect_address_onset()` — anchor the address window to body-motion onset (shoulder+hip midpoint speed threshold), not the wrist takeaway. Re-point `_addr_median` at it.
+2. **Recalibrate all four thresholds** (`SWAY_THRESHOLD` 0.13, `REVERSE_PIVOT_THRESHOLD` 0.12, `EARLY_EXTENSION_THRESHOLD` 0.10, `POSTURE_THRESHOLD` 12°) against the P0.1 corpus. Fixing the window without lowering the thresholds flips borderline swings from false-positive to false-negative, because the thresholds currently sit high to compensate for the inflation.
+3. Update the fault characterization tests (`tests/test_faults.py`) to the new windows and re-verify.
+4. Only then mirror to Dart.
+
+Why blocked: step 2 has no ground truth without the corpus. Doing step 1 alone silently changes fault detection and regresses accuracy. Do not start P0.2 before P0.1 exists.
+
+#### P0.3 — fps windowing refactor ✅ DONE
+- Window constants converted from hard-coded frame counts to durations (`SMOOTH_WINDOW_S`, `IMPACT_RADIUS_S`, `ADDRESS_OFFSET_S`, `DEFAULT_RADIUS_S`) resolved via `frames_for(seconds, fps)`; behavior-preserving at `BASELINE_FPS = 240` (all 24 windowing characterization tests unchanged; verified the suite catches a perturbed constant).
+- Remaining seam: `main()` still uses container fps and pins windowing to `BASELINE_FPS`. When P0.1 lands a `capture_fps` metadata field per video (defaulting to `CAP_PROP_FPS` when they agree), thread it into `detect_phases`/detectors — that is the point where slow-mo vs real-time stops being a hidden variable.
+- **Left-handed golfers**: `HANDEDNESS` is a module constant with no per-run override — lefties are analyzed on the trail wrist (garbage phases). Parameterize before admitting lefties to the corpus.
 
 ### P1 — Flutter Device Testing
 **Status**: Not started
@@ -153,11 +203,12 @@ The pipeline architecture (pose → phases → features → faults → drills �
 - `README.md` has a table mapping Python modules to Dart equivalents
 - Keep `drills.json` in sync between `data/` and `flutter_app/assets/`
 - Thresholds are defined as constants in both codebases — update both when calibrating
+- **KNOWN DIVERGENCE (intentional, tracked):** the P0.3 fps windowing refactor (duration-based constants + `frames_for`) is Python-only for now. The Dart port still uses hard-coded frame counts. This is deliberate — the port is held until the Python side is validated against the corpus (per P0.2), so an unvalidated change isn't mirrored into two codebases. Port `frames_for` + the seconds constants to Dart together with the P0.2 recalibration, not before.
 
 ### Key Design Decisions (do not change without discussion)
 - **Eye midpoint** for head tracking (not nose) — rotation-stable proxy
 - **Torso-length normalization** for all distance-based faults — resolution/size-independent
-- **Median windowing** at address (10 frames) and impact (radius 2–3) — jitter-resistant
+- **Median windowing** at address and impact, as durations resolved to frames at the capture rate (`ADDRESS_OFFSET_S`, `IMPACT_RADIUS_S`, `DEFAULT_RADIUS_S`; 10 / 2 / 3 frames at `BASELINE_FPS`=240) — jitter-resistant and frame-rate-invariant. **The address window has a KNOWN ISSUE** (samples into the takeaway motion, not settled address) — see P0.2 and the `swing_phases.py` comment; do not treat the current constant as validated
 - **Target direction auto-inferred** from hip translation — works regardless of camera side
 - **Lower is always better** for fault values; **tempo uses distance from 3:1** — different semantics
 - **Record-then-analyze** flow on mobile (not real-time) — simpler, more accurate
