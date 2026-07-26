@@ -8,9 +8,14 @@ import '../analysis/swing_history.dart';
 import '../analysis/swing_phases.dart';
 import 'drill.dart';
 
-/// A single fault's verdict plus a human-readable one-line detail, ready for the
-/// UI. Fault-specific numbers live in the detail string so the report screen
+/// A single fault's measurement plus a human-readable one-line detail, ready for
+/// the UI. Fault-specific numbers live in the detail string so the report screen
 /// stays generic.
+///
+/// [flagged] means the measurement passed the detector's reference value — not
+/// that the fault is confirmed. The report presents it tentatively (see
+/// [tentativeLabel]) because the thresholds have not been validated against a
+/// real corpus yet.
 class FaultVerdict {
   /// One of the fault ids in `faults.dart` (e.g. [faultHeadSway]).
   final String id;
@@ -28,6 +33,12 @@ class FaultVerdict {
     required this.flagged,
     required this.detail,
   });
+
+  /// The label as the report presents it: hedged while the thresholds are still
+  /// unvalidated, so a flagged fault reads as a possibility rather than a
+  /// finding. Plain [label] when nothing was flagged.
+  String get tentativeLabel =>
+      flagged ? 'Possible ${label.toLowerCase()}' : label;
 }
 
 class SwingAnalysis {

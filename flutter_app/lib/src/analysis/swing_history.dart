@@ -6,6 +6,9 @@
 /// value -> current value, whether it improved/worsened/stayed put, and
 /// whether it crossed the fault threshold in either direction.
 ///
+/// The trend and threshold-crossing parts of that comparison are computed here
+/// but **not rendered** — see the guardrail note on [SwingComparison.between].
+///
 /// Pure Dart (no Flutter imports) so the logic stays unit-testable; the
 /// report-screen UI lives in `ui/widgets/swing_comparison_view.dart`. The
 /// stored file has the same shape as the Python pipeline's
@@ -194,12 +197,13 @@ SwingSession buildSession({
 
 enum Trend { improved, worsened, unchanged }
 
-/// Did the fault flag flip between sessions?
+/// Did the fault flag flip between sessions? Computed but not rendered — see the
+/// guardrail note on [SwingComparison.between].
 enum Crossing {
   /// Was flagged, now under the threshold.
   faultFixed,
 
-  /// Newly over the threshold -- flag it and point at its drills.
+  /// Newly over the threshold.
   faultNew,
 }
 
@@ -278,6 +282,20 @@ class SwingComparison {
   /// The fault the golfer said they were working on last session, if any.
   String? get focusFault => previousSession.targeting;
 
+  /// Pair up two sessions' measurements.
+  ///
+  /// GUARDRAIL — the [Trend] and [Crossing] values this computes are
+  /// intentionally **computed but not rendered**. The report's comparison card
+  /// (`ui/widgets/swing_comparison_view.dart`) shows previous -> current values
+  /// only; it deliberately does not surface trend, `newFaults`, `fixedFaults`,
+  /// or the FIXED/NEW badges.
+  ///
+  /// Reason: the fault thresholds have never been validated against a real
+  /// corpus, so "improved", "fixed", and "new fault" are conclusions the data
+  /// cannot support — a threshold crossing may be measurement noise rather than
+  /// a change in the golfer's swing. The machinery is kept (and stays tested) so
+  /// it can be switched back on once the beta has accumulated enough swings to
+  /// validate the thresholds. Do not re-surface it in the UI before then.
   factory SwingComparison.between(SwingSession previous, SwingSession current) {
     final faults = <FaultComparison>[];
     for (final faultId in faultIds) {
