@@ -55,9 +55,9 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
           });
         },
       );
-      // Verification loop: log this swing to the on-device history and fetch
-      // the comparison against the previous session. Best-effort — a storage
-      // hiccup must never block the report.
+      // Log this swing to the on-device history and fetch the previous
+      // session's values to show alongside it. Best-effort — a storage hiccup
+      // must never block the report.
       SwingComparison? comparison;
       try {
         final dir = await getApplicationDocumentsDirectory();
@@ -90,7 +90,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
   String get _stageLabel => switch (_stage) {
         AnalysisStage.extractingFrames => 'Extracting frames…',
         AnalysisStage.detectingPose => 'Detecting body pose…',
-        AnalysisStage.computingReport => 'Scoring your swing…',
+        AnalysisStage.computingReport => 'Measuring your swing…',
       };
 
   @override

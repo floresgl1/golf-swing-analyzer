@@ -119,7 +119,7 @@ class SwingAnalyzer {
         label: faultLabels[faultHeadSway]!,
         flagged: head.flagged,
         detail: 'Lateral sway ${_fmt(head.lateral)} torso-lengths '
-            '(threshold ${_fmt(swayThreshold)}). '
+            '(beta reference ${_fmt(swayThreshold)}). '
             'Vertical dip ${_fmt(head.vertical)} — informational.',
       ),
       FaultVerdict(
@@ -127,14 +127,14 @@ class SwingAnalyzer {
         label: faultLabels[faultReversePivot]!,
         flagged: pivot.flagged,
         detail: 'Spine lean ${_fmtSigned(pivot.reverse)} torso-lengths toward '
-            'target (threshold ${_fmt(reversePivotThreshold)}).',
+            'target (beta reference ${_fmt(reversePivotThreshold)}).',
       ),
       FaultVerdict(
         id: faultEarlyExtension,
         label: faultLabels[faultEarlyExtension]!,
         flagged: extension.flagged,
         detail: 'Pelvis rise ${_fmtSigned(extension.rise)} torso-lengths '
-            '(threshold ${_fmt(earlyExtensionThreshold)}).',
+            '(beta reference ${_fmt(earlyExtensionThreshold)}).',
       ),
       FaultVerdict(
         id: faultLossOfPosture,
@@ -143,7 +143,7 @@ class SwingAnalyzer {
         detail: 'Spine tilt ${_fmtDeg(posture.tiltAddress)} → '
             '${_fmtDeg(posture.tiltImpact)} '
             '(straightened ${_fmtSignedDeg(posture.straighten)}, '
-            'threshold ${_fmtDeg(postureThreshold)}).',
+            'beta reference ${_fmtDeg(postureThreshold)}).',
       ),
     ];
 
