@@ -92,8 +92,11 @@ class _BetaCaveat extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Beta: these measurements are indicative only and have not been '
-              'validated against a reference set.',
+              'Beta: these measurements are indicative only. The reference '
+              'values were tuned on high-speed footage, and phone video is '
+              'measured over different time windows than they assume, so the '
+              'numbers below are not directly comparable to them and have not '
+              'been checked against a reference set.',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.outline),
             ),
@@ -164,8 +167,20 @@ class _TempoSummary extends StatelessWidget {
                   '(${tempo.downswingFrames} frames)'),
               const SizedBox(height: 4),
               Text(
-                'Ratio ${tempo.ratio.isFinite ? tempo.ratio.toStringAsFixed(1) : '—'} : 1  '
-                '(tour average ~3 : 1)',
+                'Ratio ${tempo.ratio.isFinite ? tempo.ratio.toStringAsFixed(1) : '—'} : 1',
+              ),
+              const SizedBox(height: 4),
+              // The "tour average ~3 : 1" benchmark used to sit next to this
+              // number, inviting a comparison the capture rate cannot support.
+              // The downswing is roughly a quarter of a second: at this phone's
+              // frame rate that is a handful of frames, and being off by one or
+              // two on where impact lands moves the ratio across most of the
+              // range that would make the comparison meaningful.
+              Text(
+                _tempoCaveat(analysis.fps),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
               ),
             ],
             const SizedBox(height: 8),
@@ -178,6 +193,21 @@ class _TempoSummary extends StatelessWidget {
       ),
     );
   }
+}
+
+/// How much to trust the tempo ratio at the rate this swing was captured.
+///
+/// Below roughly 120 fps the downswing spans too few frames for the ratio to be
+/// worth comparing against anything, so the report says so instead of printing
+/// a benchmark beside it.
+String _tempoCaveat(double fps) {
+  if (fps >= 120) {
+    return 'Timing precision depends on frame rate; this swing was captured at '
+        '${fps.toStringAsFixed(0)} fps.';
+  }
+  return 'At ${fps.toStringAsFixed(0)} fps the downswing spans only a few '
+      'frames, so this ratio is rough — not precise enough to compare against '
+      'a target.';
 }
 
 class _SectionHeader extends StatelessWidget {
@@ -193,17 +223,30 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+/// Shown when no measurement passed its reference value.
+///
+/// Deliberately not an all-clear, and deliberately not green. The softening
+/// pass hedged the positive direction ("Possible…") and left this one
+/// confident, but nothing measured here supports "your swing is fine": the
+/// false-negative rate is as unvalidated as the false-positive rate, and only
+/// four faults are measured at all.
 class _CleanSwingBanner extends StatelessWidget {
   const _CleanSwingBanner();
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: Colors.green.withValues(alpha: 0.12),
-      child: const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('Nothing flagged in this swing.'),
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          'None of the four measurements passed its reference value this '
+          'swing. That is not a clean bill of health — it means these four '
+          'checks did not see anything, not that the swing was good.',
+          style: theme.textTheme.bodyMedium,
+        ),
       ),
     );
   }
