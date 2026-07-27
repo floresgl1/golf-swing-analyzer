@@ -27,6 +27,10 @@ dependencies:
   path_provider: ^2.1.0
   path: ^1.9.0
 
+  # Manual corpus export via the system share sheet. Deliberately the only way
+  # swings leave the device: no backend, no upload, no account.
+  share_plus: ^10.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

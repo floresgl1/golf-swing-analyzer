@@ -130,10 +130,15 @@ void main() {
 
       expect(afterSecond.startsWith(afterFirst), isTrue,
           reason: 'appending must not rewrite existing records');
-      expect(afterSecond.trim().split('\n'), hasLength(2));
-      for (final line in afterSecond.trim().split('\n')) {
+
+      final lines = afterSecond.trim().split('\n');
+      // Header line, then one line per swing.
+      expect(lines, hasLength(3));
+      expect(jsonDecode(lines.first)['schema_version'], historySchemaVersion);
+      for (final line in lines) {
         expect(() => jsonDecode(line), returnsNormally);
       }
+      expect((await store.load()).sessions, hasLength(2));
     });
 
     test('lastSession reads the newest record without parsing the rest',
