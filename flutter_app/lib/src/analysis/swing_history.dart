@@ -1,5 +1,5 @@
 /// Swing session records and swing-over-swing comparison, ported from
-/// `src/swing_history.py` on `main` (the verification loop).
+/// `src/swing_history.py` (the verification loop).
 ///
 /// After each analysis the app appends a [SwingSession] to the on-device
 /// corpus, then compares it against the previous session: per fault, previous
@@ -64,7 +64,7 @@ enum SwingKind {
 
 /// Format [t] as ISO-8601 **carrying its UTC offset**, to seconds precision —
 /// matching Python's `datetime.now().astimezone().isoformat(timespec='seconds')`
-/// in `src/swing_history.py` on `main`.
+/// in `src/swing_history.py`.
 ///
 /// `DateTime.toIso8601String()` emits no offset for a local DateTime, so every
 /// record written before this was ambiguous about the instant it described.
@@ -195,7 +195,7 @@ class SwingSession {
 
   /// Capture rate reported by the video container, or null when not recorded.
   ///
-  /// Note this is the *container* rate. Per `swing_phases.py` on `main`, a
+  /// Note this is the *container* rate. Per `swing_phases.py`, a
   /// slow-motion clip reports its render rate here, not the rate it was
   /// captured at; the two are only equal for real-time capture. Stored as-is
   /// and labelled honestly rather than guessed at.
@@ -326,7 +326,7 @@ class SwingSession {
 }
 
 /// Build a history entry from one run of the fault detectors, the counterpart
-/// of `build_session` in `src/swing_history.py` on `main`. Non-finite
+/// of `build_session` in `src/swing_history.py`. Non-finite
 /// measurements are stored as null.
 ///
 /// The capture-context arguments ([fps], [frameCount], [handedness],
@@ -431,8 +431,6 @@ class FaultComparison {
     required this.flagged,
     required this.threshold,
   });
-
-  double get delta => current - previous;
 
   /// Display label, e.g. "Head sway".
   String get label => faultLabels[faultId] ?? faultId;

@@ -12,7 +12,7 @@
 /// ## Recovery: a damaged file must never cost more than the damaged part
 ///
 /// The pattern is ported from `_read_history` / `save_session` in
-/// `src/swing_history.py` on `main`, adapted to a line-oriented file:
+/// `src/swing_history.py`, adapted to a line-oriented file:
 ///
 /// * A file that cannot be read or holds nothing parseable is renamed to
 ///   `<name>.corrupt.bak` and treated as empty, so the next append starts a

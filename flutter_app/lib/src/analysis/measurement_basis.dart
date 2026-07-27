@@ -6,7 +6,7 @@
 /// quantities. Nothing in a record used to say so, so the corpus would have
 /// quietly mixed them.
 ///
-/// Design follows the Practice Focus section of `ROADMAP.md` on `main`, which
+/// Design follows the Practice Focus section of `ROADMAP.md`, which
 /// specifies this shape for a reason and warns about the ways it gets broken:
 ///
 /// * **Derived, never hand-incremented.** These are hashes of the parameters

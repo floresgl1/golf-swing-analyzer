@@ -112,6 +112,13 @@ support.
   view. See the guardrail note on `SwingComparison.between`. Do not re-surface it
   in the UI until the thresholds are validated.
 
+- **The reassuring direction was softened too (Phase 0).** The original pass
+  hedged flagged faults and left "Nothing flagged in this swing." confident and
+  green, and printed the tempo ratio beside a "tour average ~3 : 1" benchmark.
+  The false-negative rate is as unmeasured as the false-positive rate, and at
+  phone frame rates the tempo ratio's error spans most of the band that would
+  make that comparison meaningful. Both are now stated honestly.
+
 **Note the asymmetry with Python.** `src/swing_history.py` still prints the full
 verdict set — direction words, "fault fixed!", "NEW fault", the focus-fault
 callout. That is deliberate and not an oversight: the Python side is a research
@@ -121,13 +128,14 @@ presentation into Dart, and do not strip it from Python to match the app.
 
 ### Exit criteria for restoring cross-session verdicts
 
-1. Enough beta swings collected to form a labelled corpus (currently the history
-   is device-local only, so collection needs a path off the device first).
+1. Enough beta swings collected to form a labelled corpus. Collection is now
+   possible (see Phase 0) but still needs a path off the device beyond manual
+   export.
 2. Per-fault thresholds validated against that corpus, with a known false-positive
    rate. This is **P0.1 + P0.2** below — the same work, not a second effort.
 3. Per-fault measurement noise quantified, so a between-session delta can be
    distinguished from repeat-measurement variance. This is the noise floor P0.1
-   specifies.
+   specifies; the corpus fields added in Phase 0 are what make it measurable.
 
 Until all three hold, the report measures and shows; it does not judge.
 
@@ -155,6 +163,63 @@ was taken wholesale.
 Recovered in passing: `34094e9` ("Fall back to an empty drill list when
 drills.json fails to parse") had a Dart half that `e86c8cf` deleted as collateral
 damage and `flutter-mvp` never received. Reverting the revert restored it.
+
+---
+
+## Phase 0 — Make beta swings usable as a corpus ✅ (app side)
+
+Changes **what is recorded**, never what is measured: no detector, threshold or
+window was touched. Developed on `claude/phase0-corpus-fields` against the old
+`flutter-mvp` tip and replayed onto this trunk after the reconciliation above.
+
+The problem: the extracted frames are deleted as soon as analysis finishes, so
+any field not written at record time is gone for that swing permanently. Swings
+were being recorded with no frame rate, no golfer, no sitting, no handedness, no
+quality signal, and no trajectory data — a log, not a corpus.
+
+- **Capture context per record**: frame rate and frame count, handedness, pose
+  coverage, and the per-frame trajectory arrays (~10 KB/swing). The arrays are
+  the important one: they let a stored swing be re-measured offline at any
+  threshold *and any window basis*, which is what makes the frame-count window
+  divergence (see Architecture Notes) retrospectively fixable instead of a
+  reason to discard everything collected before P0.2.
+- **Grouping**: an anonymous local `participant_id` (no account) and a
+  `capture_session_id` minted per app run. The latter is what yields P0.1's
+  within-session repeats from ordinary beta use.
+- **Measurement basis stamps**: derived `value_basis` and `threshold_basis`
+  hashes per record, built to the spec in Practice Focus below, so records
+  written before and after a recalibration are identifiably incomparable.
+  ⚠️ One drift hazard: the window constants are inline literals in `faults.dart`,
+  so the basis **mirrors** rather than imports them. P0.2 rewrites those windows
+  anyway — name them there and import them here at the same time.
+- **Calibration swings**: `swing_kind` (natural | calibration) plus the fault
+  being deliberately exaggerated, so labelled positive controls are not counted
+  among natural swings when computing a false-positive rate.
+- **Coach self-report** on the participant record (not per swing): has a coach
+  identified this fault in you? A weak prior for validation, never a verdict;
+  unanswered stays null so "not asked" never reads as "no".
+- **Durability**: storage moved to append-only JSON Lines with corrupt-file
+  recovery and atomic whole-file rewrites, ported from `_read_history` /
+  `save_session` in `src/swing_history.py`. This closes a bug where a corrupt
+  history made every future write fail silently — a tester could contribute
+  zero swings, permanently, with nothing surfaced.
+- **Manual export** via the system share sheet. No backend, no upload.
+
+**Still open after Phase 0:**
+- **Off-device collection.** Manual export is the floor, not the answer; exit
+  criterion 1 still needs a real path.
+- **Video retention.** Not done, and a deliberate open question — without it no
+  stored swing can be hand-labelled, so ground truth has to come from elsewhere.
+  Carries storage, consent and privacy decisions that are not the app's to make
+  unilaterally.
+- **Left-handed golfers on the Python side.** The app now asks and records
+  handedness, but `HANDEDNESS` in `src/swing_phases.py` is still a module
+  constant imported by six call sites including the GolfDB harness. See P0.3.
+- **Python↔Dart record-shape divergence.** The Dart store now writes JSON Lines
+  with capture-context fields the Python `{"sessions": [...]}` document has no
+  counterpart for. Field names are kept snake_case and aligned where they
+  overlap, so a converter stays trivial, but the two files are no longer
+  interchangeable. See the note on A1 in `AUDIT.md`.
 
 ---
 

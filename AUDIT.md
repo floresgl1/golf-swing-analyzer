@@ -246,7 +246,7 @@ Overall this is clean, well-decomposed code with strong pure-logic tests. Findin
 
 **Resolved 2026-07-27.** The file exists. `src/swing_history.py` and `data/swing_history.json` were on `main` all along and are now in this tree; the audit branch simply did not have them. No action needed — the option (a) recommended below turned out to be already done elsewhere.
 
-One caveat survives: the interchangeability claim is *narrower* than the docstring implies. The Python side writes a single `{"sessions": [...]}` document and stamps `datetime.now().astimezone().isoformat(timespec='seconds')`; the Dart side writes `DateTime.toIso8601String()`, which carries **no UTC offset** for a local time. The field names line up, so a converter is trivial, but the two files are not byte-interchangeable today.
+One caveat survives, in a different form than when this was written. The timestamp half is **fixed**: Phase 0 replaced `DateTime.toIso8601String()` with `formatIsoWithOffset`, matching Python's `datetime.now().astimezone().isoformat(timespec='seconds')` exactly. What remains is a *shape* difference, and it widened rather than closed: Python writes a single `{"sessions": [...]}` document, while Dart now writes JSON Lines with a schema header and carries capture-context fields (frame rate, handedness, pose coverage, the per-frame arrays, the basis stamps) that the Python entry has no counterpart for. Field names stay snake_case and aligned where they overlap, so a converter remains trivial, but the two files are not interchangeable.
 
 The original finding, for the record:
 
@@ -258,7 +258,11 @@ Consequences:
 
 **Proposed fix (your call):** either (a) **write `src/swing_history.py`** mirroring the Dart (restores the project's Python-is-source-of-truth pattern and makes the JSON genuinely interchangeable — the snake_case keys are already Python-friendly), or (b) **correct the docs/docstrings** to state this is a Dart-only feature with no Python counterpart yet. Recommend (a) for consistency.
 
-### A2 🟠 Corrupt history file leaves the store permanently stuck (masked by a blanket catch)
+### A2 ✅ FIXED IN PHASE 0 — ~~Corrupt history file leaves the store permanently stuck~~
+
+**Fixed.** `SwingHistoryStore` moved to `swing_history_store.dart` and is now self-healing: an unreadable file or one holding nothing parseable is renamed to `<name>.corrupt.bak` and treated as empty, so the next append starts fresh instead of failing forever. A single damaged *line* is skipped and counted rather than being fatal — the advantage of the line format. The blanket `catch` at the call site is gone: a failed write is surfaced on the report screen and counted in a sidecar `swing_history_failures.jsonl`, and `AppendResult.isFirstSwing` distinguishes a genuine first swing from a failed write. Covered by `test/swing_history_store_test.dart`.
+
+The original finding, for the record:
 
 `SwingHistoryStore.load()` (`swing_history.dart:329`) does `jsonDecode(await file.readAsString()) as Map<String, dynamic>` and `FaultResult.fromJson` does unguarded `as num`/`as bool` casts. A corrupt or schema-drifted history file therefore makes `load()` — and thus `append()` — **throw**.
 
@@ -266,7 +270,11 @@ The app doesn't crash, because `analyzing_screen.dart` wraps `store.append(...)`
 
 **Proposed fix:** make `load()` self-healing — catch `FormatException`/`TypeError`, treat a corrupt file as empty history (ideally rename it to `.corrupt` first), so the next `append()` overwrites it with a valid file and recording resumes.
 
-### A3 🟠 Non-atomic write can lose the entire history
+### A3 ✅ FIXED IN PHASE 0 — ~~Non-atomic write can lose the entire history~~
+
+**Fixed, though not the way this finding proposed.** The whole-file rewrite is gone entirely: records are appended one JSON object per line, so recording a swing no longer re-serializes the corpus and cannot truncate it. Whole-file rewrites that do remain (corrupt-file recovery, legacy migration) go through temp-file-then-rename as suggested. Appending a record deliberately does *not* — temp-and-rename would require copying the whole file, which is the cost the line format exists to remove — and the residual risk, a partial trailing line after a crash, is absorbed by the reader skipping it. Worst case is losing the in-flight swing, never the corpus.
+
+The original finding, for the record:
 
 `append()` (`swing_history.dart:343`) rewrites the whole file in place with `file.writeAsString(...)`. If the app is killed or storage fills mid-write, the file is left truncated/corrupt and **all prior sessions are lost** (compounding A2). **Proposed fix:** write to a temp file then atomically rename over the target (and/or keep a `.bak`). Standard durable-write pattern for append-only local stores.
 
