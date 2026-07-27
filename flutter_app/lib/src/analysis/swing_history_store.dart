@@ -49,8 +49,64 @@ import 'dart:io';
 
 import 'swing_history.dart';
 
+/// On-disk format version, written as the corpus file's first line.
+///
+/// Bump when the *file* shape changes — a renamed field, a restructured record,
+/// a different line convention. It is not a measurement version: what a value
+/// means is [MeasurementBasis], stamped per record, and the two move
+/// independently.
+///
+/// 1 — one JSON object per line, no header (Tier 1).
+/// 2 — header line carrying schema version and participant id (Tier 2).
+const int historySchemaVersion = 2;
+
+/// The corpus file's first line: what format the file is in and whose swings
+/// these are.
+class HistoryHeader {
+  final int schemaVersion;
+
+  /// Anonymous local golfer id, or null on a file written before the header
+  /// existed.
+  final String? participantId;
+
+  final DateTime? createdAt;
+
+  /// Unknown keys, preserved on rewrite.
+  final Map<String, dynamic> _source;
+
+  const HistoryHeader({
+    required this.schemaVersion,
+    this.participantId,
+    this.createdAt,
+    Map<String, dynamic> source = const <String, dynamic>{},
+  }) : _source = source;
+
+  static const String recordType = 'header';
+
+  factory HistoryHeader.fromJson(Map<String, dynamic> json) => HistoryHeader(
+        schemaVersion: (json['schema_version'] as num).toInt(),
+        participantId: json['participant_id'] as String?,
+        createdAt: json['created_at'] == null
+            ? null
+            : DateTime.parse(json['created_at'] as String).toLocal(),
+        source: json,
+      );
+
+  Map<String, dynamic> toJson() => {
+        ..._source,
+        'record': recordType,
+        'schema_version': schemaVersion,
+        'participant_id': participantId,
+        'created_at':
+            createdAt == null ? null : formatIsoWithOffset(createdAt!),
+      };
+}
+
 /// Result of reading the corpus.
 class HistoryLoad {
+  /// The file's header, or null when it predates headers or was damaged.
+  final HistoryHeader? header;
+
   /// Parsed records, oldest first.
   final List<SwingSession> sessions;
 
@@ -64,6 +120,7 @@ class HistoryLoad {
 
   const HistoryLoad({
     required this.sessions,
+    this.header,
     this.skippedLines = 0,
     this.recoveredFromCorruption = false,
   });
@@ -116,10 +173,14 @@ class AppendResult {
 /// final result = await store.append(session);
 /// ```
 class SwingHistoryStore {
-  SwingHistoryStore(this.file, {this.legacyFile});
+  SwingHistoryStore(this.file, {this.legacyFile, this.participantId});
 
   /// The JSON Lines corpus.
   final File file;
+
+  /// Anonymous golfer id written into the header when the file is created.
+  /// Null in tests that do not care about grouping.
+  final String? participantId;
 
   /// The pre-JSONL `{"sessions": [...]}` file, if one may exist from an earlier
   /// build. Migrated into [file] once, then renamed aside. Null disables
@@ -150,9 +211,19 @@ class SwingHistoryStore {
 
     final lines = _contentLines(text);
     final sessions = <SwingSession>[];
+    HistoryHeader? header;
     var skipped = 0;
     for (final line in lines) {
-      final session = _tryParse(line);
+      final decoded = _tryDecodeObject(line);
+      if (decoded == null) {
+        skipped++;
+        continue;
+      }
+      if (_isHeader(decoded)) {
+        header ??= _tryHeader(decoded);
+        continue; // a header is not a record, so not a skipped one either
+      }
+      final session = _trySession(decoded);
       if (session == null) {
         skipped++;
       } else {
@@ -160,13 +231,19 @@ class SwingHistoryStore {
       }
     }
 
-    // Content that yielded nothing is damage, not history: quarantine it so the
-    // next append starts clean instead of appending onto garbage forever.
-    if (sessions.isEmpty && lines.isNotEmpty) {
+    // Content that yielded neither a header nor a record is damage, not
+    // history: quarantine it so the next append starts clean instead of
+    // appending onto garbage forever. A valid header with no records is a
+    // freshly created corpus, which is not damage.
+    if (sessions.isEmpty && header == null && lines.isNotEmpty) {
       await _quarantine();
       return const HistoryLoad(sessions: [], recoveredFromCorruption: true);
     }
-    return HistoryLoad(sessions: sessions, skippedLines: skipped);
+    return HistoryLoad(
+      header: header,
+      sessions: sessions,
+      skippedLines: skipped,
+    );
   }
 
   /// The most recent parseable record, or null when there is none.
@@ -184,15 +261,22 @@ class SwingHistoryStore {
       return null;
     }
     final lines = _contentLines(text);
+    var sawHeader = false;
     for (var i = lines.length - 1; i >= 0; i--) {
-      final session = _tryParse(lines[i]);
+      final decoded = _tryDecodeObject(lines[i]);
+      if (decoded == null) continue;
+      if (_isHeader(decoded)) {
+        sawHeader = true;
+        continue;
+      }
+      final session = _trySession(decoded);
       if (session != null) return session;
     }
-    // Content, but not one parseable record in it: the same whole-file damage
-    // [load] quarantines. Handled here too so [append] — which reads through
-    // this method, not [load] — recovers identically instead of stacking good
-    // records on top of garbage forever.
-    if (lines.isNotEmpty) await _quarantine();
+    // Content, but not one parseable record and not even a header: the same
+    // whole-file damage [load] quarantines. Handled here too so [append] —
+    // which reads through this method, not [load] — recovers identically
+    // instead of stacking good records on top of garbage forever.
+    if (lines.isNotEmpty && !sawHeader) await _quarantine();
     return null;
   }
 
@@ -218,6 +302,11 @@ class SwingHistoryStore {
       recovered = previous == null && !await file.exists();
     }
 
+    // A fresh (or freshly recovered) file opens with its header, so the format
+    // and the golfer are stated in the file rather than inferred from it.
+    if (!await file.exists()) {
+      await _appendLine(_jsonl.convert(_newHeader().toJson()));
+    }
     await _appendLine(_jsonl.convert(session.toJson()));
 
     return AppendResult(
@@ -227,6 +316,12 @@ class SwingHistoryStore {
       recoveredFromCorruption: recovered,
     );
   }
+
+  HistoryHeader _newHeader() => HistoryHeader(
+        schemaVersion: historySchemaVersion,
+        participantId: participantId,
+        createdAt: DateTime.now(),
+      );
 
   /// Rewrite the whole corpus atomically: temp file, then rename over the
   /// target, so an interrupted write cannot leave a truncated file behind.
@@ -257,14 +352,37 @@ class SwingHistoryStore {
   static List<String> _contentLines(String text) =>
       [for (final l in text.split('\n')) if (l.trim().isNotEmpty) l];
 
-  /// Parse one line, returning null rather than throwing on anything malformed
-  /// — bad JSON, the wrong shape, or a record missing a field the model reads.
-  static SwingSession? _tryParse(String line) {
+  /// Decode one line to a JSON object, or null on anything malformed.
+  static Map<String, dynamic>? _tryDecodeObject(String line) {
     try {
       final decoded = jsonDecode(line);
-      if (decoded is! Map<String, dynamic>) return null;
-      if (decoded['faults'] is! Map<String, dynamic>) return null;
-      return SwingSession.fromJson(decoded);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Header lines are recognised by their explicit type, and by carrying a
+  /// schema version — the latter so a file written before the `record` key
+  /// existed still reads correctly.
+  static bool _isHeader(Map<String, dynamic> json) =>
+      json['record'] == HistoryHeader.recordType ||
+      json.containsKey('schema_version');
+
+  static HistoryHeader? _tryHeader(Map<String, dynamic> json) {
+    try {
+      return HistoryHeader.fromJson(json);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Parse one record, returning null rather than throwing on anything
+  /// malformed — the wrong shape, or a field the model reads being absent.
+  static SwingSession? _trySession(Map<String, dynamic> json) {
+    try {
+      if (json['faults'] is! Map<String, dynamic>) return null;
+      return SwingSession.fromJson(json);
     } catch (_) {
       return null;
     }
@@ -313,7 +431,13 @@ class SwingHistoryStore {
       lines = const [];
     }
 
-    if (lines.isNotEmpty) await _writeLinesAtomically(lines);
+    if (lines.isNotEmpty) {
+      // Migrated records predate every capture-context field, so the header is
+      // what marks them as belonging to this golfer at all.
+      await _writeLinesAtomically(
+        [_jsonl.convert(_newHeader().toJson()), ...lines],
+      );
+    }
     try {
       await legacy.rename('${legacy.path}.migrated.bak');
     } catch (_) {

@@ -253,8 +253,9 @@ void main() {
       // Inspect the persisted lines directly: the migrated session's unknown
       // keys must still be there.
       final lines = file.readAsStringSync().trim().split('\n');
-      expect(lines, hasLength(2));
-      final first = jsonDecode(lines.first) as Map<String, dynamic>;
+      // Header, migrated legacy session, then the appended one.
+      expect(lines, hasLength(3));
+      final first = jsonDecode(lines[1]) as Map<String, dynamic>;
       expect(first['coach_note'], 'keep your head still');
       final head =
           (first['faults'] as Map<String, dynamic>)[faultHeadSway] as Map;

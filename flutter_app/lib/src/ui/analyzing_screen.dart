@@ -18,11 +18,27 @@ class AnalyzingScreen extends StatefulWidget {
     required this.videoPath,
     required this.drills,
     required this.handedness,
+    required this.participantId,
+    required this.captureSessionId,
+    this.swingKind = SwingKind.natural,
+    this.calibrationFault,
     this.targeting,
   });
 
   final String videoPath;
   final List<Drill> drills;
+
+  /// Anonymous golfer this swing belongs to.
+  final String participantId;
+
+  /// Groups this swing with the others recorded in the same sitting.
+  final String captureSessionId;
+
+  /// Whether this is a natural swing or a labelled calibration swing.
+  final SwingKind swingKind;
+
+  /// The fault deliberately exaggerated, when [swingKind] is calibration.
+  final String? calibrationFault;
 
   /// Which wrist phase detection should track. Chosen on the record screen;
   /// there is no safe default, because analyzing a left-handed golfer as
@@ -48,6 +64,8 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
     _analyzer = SwingAnalyzer(
       drills: widget.drills,
       handedness: widget.handedness,
+      participantId: widget.participantId,
+      captureSessionId: widget.captureSessionId,
     );
     _run();
   }
@@ -57,6 +75,8 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
       final analysis = await _analyzer.analyze(
         widget.videoPath,
         targeting: widget.targeting,
+        swingKind: widget.swingKind,
+        calibrationFault: widget.calibrationFault,
         onProgress: (stage, fraction) {
           if (!mounted) return;
           setState(() {
@@ -77,6 +97,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
         final store = SwingHistoryStore(
           File(p.join(dir.path, 'swing_history.jsonl')),
           legacyFile: File(p.join(dir.path, 'swing_history.json')),
+          participantId: widget.participantId,
         );
         final result = await store.append(analysis.session);
         comparison = result.comparison;

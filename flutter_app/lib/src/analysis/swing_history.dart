@@ -35,6 +35,60 @@ export 'drill_recommender.dart' show faultLabels;
 export 'frame_series.dart' show FrameSeries, poseCoverage;
 export 'handedness.dart' show Handedness;
 
+/// Why a swing was recorded.
+///
+/// Calibration swings are positive controls: a tester deliberately exaggerating
+/// one fault so the corpus contains known-label examples. They must be
+/// distinguishable from natural swings, because mixing them in would make the
+/// false-positive rate look far better than it is — the detector is supposed to
+/// flag them.
+enum SwingKind {
+  /// A swing the golfer was trying to hit normally.
+  natural,
+
+  /// A swing with one fault deliberately exaggerated, recorded as a labelled
+  /// positive control. See [SwingSession.calibrationFault].
+  calibration;
+
+  String get id => switch (this) {
+        SwingKind.natural => 'natural',
+        SwingKind.calibration => 'calibration',
+      };
+
+  static SwingKind? tryParse(Object? value) => switch (value) {
+        'natural' => SwingKind.natural,
+        'calibration' => SwingKind.calibration,
+        _ => null,
+      };
+}
+
+/// Format [t] as ISO-8601 **carrying its UTC offset**, to seconds precision —
+/// matching Python's `datetime.now().astimezone().isoformat(timespec='seconds')`
+/// in `src/swing_history.py` on `main`.
+///
+/// `DateTime.toIso8601String()` emits no offset for a local DateTime, so every
+/// record written before this was ambiguous about the instant it described.
+/// That matters here: grouping swings into sittings by time gap, and comparing
+/// a capture session against a later one, both assume timestamps are
+/// comparable across devices and travel. They were not.
+String formatIsoWithOffset(DateTime t) {
+  if (t.isUtc) {
+    final u = t;
+    return '${_datePart(u)}T${_timePart(u)}Z';
+  }
+  final offset = t.timeZoneOffset;
+  final sign = offset.isNegative ? '-' : '+';
+  final hours = _two(offset.inHours.abs());
+  final minutes = _two(offset.inMinutes.abs().remainder(60));
+  return '${_datePart(t)}T${_timePart(t)}$sign$hours:$minutes';
+}
+
+String _two(int n) => n.toString().padLeft(2, '0');
+String _datePart(DateTime t) =>
+    '${t.year.toString().padLeft(4, '0')}-${_two(t.month)}-${_two(t.day)}';
+String _timePart(DateTime t) =>
+    '${_two(t.hour)}:${_two(t.minute)}:${_two(t.second)}';
+
 /// Fault ids in report order.
 const List<String> faultIds = [
   faultHeadSway,
@@ -163,6 +217,33 @@ class SwingSession {
   /// null when not recorded.
   final FrameSeries? frames;
 
+  /// Anonymous local golfer id. Stamped on the record as well as held in the
+  /// participant file so an exported record stays self-describing once it has
+  /// been merged with other devices' exports.
+  final String? participantId;
+
+  /// Groups swings taken in one sitting. Minted per app session; this is what
+  /// turns ordinary beta use into the within-session repeats the noise floor
+  /// needs.
+  final String? captureSessionId;
+
+  /// App build that produced this record.
+  final String? appVersion;
+
+  /// Hash of the parameters that determine the measured *value*. Records with
+  /// different value bases measured different quantities.
+  final String? valueBasis;
+
+  /// Hash of the parameters that determine whether a value is *flagged*.
+  final String? thresholdBasis;
+
+  /// Whether this was a natural swing or a labelled calibration swing.
+  final SwingKind? swingKind;
+
+  /// For a [SwingKind.calibration] swing, the fault id the golfer was
+  /// deliberately exaggerating. Null otherwise.
+  final String? calibrationFault;
+
   /// The raw map this was parsed from, kept so top-level keys the model doesn't
   /// know (e.g. a field a future writer adds) survive a load/save round-trip.
   /// Empty for instances built in code rather than read from JSON.
@@ -178,13 +259,22 @@ class SwingSession {
     this.handedness,
     this.poseCoverageFraction,
     this.frames,
+    this.participantId,
+    this.captureSessionId,
+    this.appVersion,
+    this.valueBasis,
+    this.thresholdBasis,
+    this.swingKind,
+    this.calibrationFault,
     Map<String, dynamic> source = const <String, dynamic>{},
   }) : _source = source;
 
   factory SwingSession.fromJson(Map<String, dynamic> json) {
     final rawFrames = json['frames'];
     return SwingSession(
-      timestamp: DateTime.parse(json['timestamp'] as String),
+      // toLocal() because an offset-carrying string parses to UTC; keeping the
+      // model in local time makes round-trips compare equal.
+      timestamp: DateTime.parse(json['timestamp'] as String).toLocal(),
       faults: (json['faults'] as Map<String, dynamic>).map(
         (id, result) =>
             MapEntry(id, FaultResult.fromJson(result as Map<String, dynamic>)),
@@ -198,6 +288,13 @@ class SwingSession {
       frames: rawFrames is Map<String, dynamic>
           ? FrameSeries.fromJson(rawFrames)
           : null,
+      participantId: json['participant_id'] as String?,
+      captureSessionId: json['capture_session_id'] as String?,
+      appVersion: json['app_version'] as String?,
+      valueBasis: json['value_basis'] as String?,
+      thresholdBasis: json['threshold_basis'] as String?,
+      swingKind: SwingKind.tryParse(json['swing_kind']),
+      calibrationFault: json['calibration_fault'] as String?,
       source: json,
     );
   }
@@ -207,7 +304,7 @@ class SwingSession {
   /// nothing a reader didn't model is dropped on write.
   Map<String, dynamic> toJson() => {
         ..._source,
-        'timestamp': timestamp.toIso8601String(),
+        'timestamp': formatIsoWithOffset(timestamp),
         'faults': faults.map((id, result) => MapEntry(id, result.toJson())),
         'tempo_ratio': tempoRatio,
         'targeting': targeting,
@@ -215,6 +312,15 @@ class SwingSession {
         'frame_count': frameCount,
         'handedness': handedness?.id,
         'pose_coverage': poseCoverageFraction,
+        'participant_id': participantId,
+        'capture_session_id': captureSessionId,
+        'app_version': appVersion,
+        'value_basis': valueBasis,
+        'threshold_basis': thresholdBasis,
+        'swing_kind': swingKind?.id,
+        'calibration_fault': calibrationFault,
+        // Last: the bulky arrays sort to the end of the line, so a record stays
+        // readable when eyeballing the file.
         'frames': frames?.toJson(),
       };
 }
@@ -240,6 +346,13 @@ SwingSession buildSession({
   Handedness? handedness,
   double? poseCoverageFraction,
   FrameSeries? frames,
+  String? participantId,
+  String? captureSessionId,
+  String? appVersion,
+  String? valueBasis,
+  String? thresholdBasis,
+  SwingKind? swingKind,
+  String? calibrationFault,
 }) {
   double? finiteOrNull(double v) => v.isFinite ? v : null;
   return SwingSession(
@@ -274,6 +387,16 @@ SwingSession buildSession({
     poseCoverageFraction:
         poseCoverageFraction == null ? null : finiteOrNull(poseCoverageFraction),
     frames: frames,
+    participantId: participantId,
+    captureSessionId: captureSessionId,
+    appVersion: appVersion,
+    valueBasis: valueBasis,
+    thresholdBasis: thresholdBasis,
+    swingKind: swingKind,
+    // Only meaningful on a calibration swing; dropped otherwise so a stale
+    // picker value cannot mislabel a natural swing.
+    calibrationFault:
+        swingKind == SwingKind.calibration ? calibrationFault : null,
   );
 }
 

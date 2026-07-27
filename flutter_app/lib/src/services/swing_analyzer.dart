@@ -12,6 +12,7 @@ import 'dart:async';
 
 import '../analysis/drill_recommender.dart';
 import '../analysis/faults.dart';
+import '../analysis/measurement_basis.dart';
 import '../analysis/swing_history.dart';
 import '../analysis/swing_phases.dart';
 import '../models/drill.dart';
@@ -41,6 +42,8 @@ class SwingAnalyzer {
   SwingAnalyzer({
     required this.drills,
     this.handedness = Handedness.right,
+    this.participantId,
+    this.captureSessionId,
     FrameExtractor? frameExtractor,
     PoseEstimator? poseEstimator,
   })  : _frameExtractor = frameExtractor ?? FrameExtractor(),
@@ -51,6 +54,12 @@ class SwingAnalyzer {
   /// Which wrist phase detection tracks. Recorded on every swing so a record
   /// analyzed on the wrong wrist stays identifiable in the corpus.
   final Handedness handedness;
+
+  /// Anonymous golfer these swings belong to.
+  final String? participantId;
+
+  /// Groups the swings recorded in one sitting.
+  final String? captureSessionId;
 
   final FrameExtractor _frameExtractor;
   final PoseEstimator _poseEstimator;
@@ -63,6 +72,8 @@ class SwingAnalyzer {
   Future<SwingAnalysis> analyze(
     String videoPath, {
     String? targeting,
+    SwingKind swingKind = SwingKind.natural,
+    String? calibrationFault,
     ProgressCallback? onProgress,
   }) async {
     onProgress?.call(AnalysisStage.extractingFrames, 0);
@@ -81,7 +92,13 @@ class SwingAnalyzer {
       }
 
       onProgress?.call(AnalysisStage.computingReport, 1);
-      return _buildReport(features, extracted.fps, targeting);
+      return _buildReport(
+        features,
+        extracted.fps,
+        targeting,
+        swingKind,
+        calibrationFault,
+      );
     } finally {
       // Clean up the extracted JPEGs regardless of outcome.
       if (extracted.workingDir.existsSync()) {
@@ -94,6 +111,8 @@ class SwingAnalyzer {
     List<FrameFeatures> features,
     double fps,
     String? targeting,
+    SwingKind swingKind,
+    String? calibrationFault,
   ) {
     // Assemble parallel arrays, matching the lists built in faults.main().
     final eyeX = [for (final f in features) f.eyeX];
@@ -179,6 +198,16 @@ class SwingAnalyzer {
         handedness: handedness,
         poseCoverageFraction: poseCoverage(features),
         frames: FrameSeries.fromFeatures(features),
+        // Grouping and provenance: who, which sitting, and what these numbers
+        // mean. The basis stamps are what stop a value recorded now from being
+        // compared with one recorded after P0.2 moves the thresholds.
+        participantId: participantId,
+        captureSessionId: captureSessionId,
+        appVersion: appVersion,
+        valueBasis: valueBasis,
+        thresholdBasis: thresholdBasis,
+        swingKind: swingKind,
+        calibrationFault: calibrationFault,
       ),
     );
   }
