@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../analysis/swing_history.dart';
+import '../analysis/swing_history_store.dart';
 import '../models/swing_analysis.dart';
 import 'widgets/drill_tile.dart';
 import 'widgets/fault_card.dart';
@@ -14,13 +15,23 @@ import 'widgets/swing_comparison_view.dart';
 /// verdict: the thresholds are unvalidated, so the report measures and shows,
 /// it does not judge.
 class ReportScreen extends StatelessWidget {
-  const ReportScreen({super.key, required this.analysis, this.comparison});
+  const ReportScreen({
+    super.key,
+    required this.analysis,
+    this.comparison,
+    this.writeStatus = HistoryWriteStatus.saved,
+  });
 
   final SwingAnalysis analysis;
 
   /// Measured values from the previous stored session alongside this one; null
   /// on the first swing. Carries no improvement judgment.
   final SwingComparison? comparison;
+
+  /// Whether this swing made it into the on-device corpus. A failure is shown
+  /// rather than swallowed: a tester whose swings stopped recording should find
+  /// that out from the app, not from an empty export weeks later.
+  final HistoryWriteStatus writeStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +51,7 @@ class ReportScreen extends StatelessWidget {
       body: ListView(
         children: [
           const _BetaCaveat(),
+          if (writeStatus == HistoryWriteStatus.failed) const _NotSavedNotice(),
           _TempoSummary(analysis: analysis),
           const _SectionHeader('What we measured'),
           for (final verdict in analysis.faultsByFocus)
@@ -87,6 +99,39 @@ class _BetaCaveat extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown when the swing could not be written to the on-device corpus. The
+/// report itself is still valid — only the record of it is missing.
+class _NotSavedNotice extends StatelessWidget {
+  const _NotSavedNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      color: scheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.save_outlined, size: 18, color: scheme.onErrorContainer),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'This swing could not be saved to your swing history. The '
+                'report below is still accurate, but this swing will not appear '
+                'in your history or in an export.',
+                style: TextStyle(color: scheme.onErrorContainer),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

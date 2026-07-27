@@ -35,4 +35,19 @@ class FrameFeatures {
         hipY = double.nan,
         torso = double.nan,
         wristY = double.nan;
+
+  /// Whether a pose was found for this frame. [FrameFeatures.missing] sets every
+  /// field to NaN and the estimator only emits a frame once every landmark it
+  /// needs is present, so this is all-or-nothing in practice; it is written out
+  /// in full anyway so a partially-NaN frame from a future backend still counts
+  /// as undetected rather than silently inflating pose coverage.
+  bool get detected =>
+      eyeX.isFinite &&
+      eyeY.isFinite &&
+      shoulderX.isFinite &&
+      shoulderY.isFinite &&
+      hipX.isFinite &&
+      hipY.isFinite &&
+      torso.isFinite &&
+      wristY.isFinite;
 }

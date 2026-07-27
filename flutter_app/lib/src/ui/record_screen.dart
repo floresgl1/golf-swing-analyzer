@@ -30,6 +30,15 @@ class _RecordScreenState extends State<RecordScreen> {
   /// check. Every detector still runs; this only sets the report's focus.
   String? _targeting;
 
+  /// Which hand the golfer swings with. This is not cosmetic: it picks the
+  /// wrist phase detection tracks, and every measurement is sampled at the
+  /// frame indices that produces. Analyzing a lefty as right-handed measures
+  /// the trail wrist and yields meaningless phases.
+  ///
+  /// Held for the life of the screen only; persisting it belongs with the
+  /// participant record.
+  Handedness _handedness = Handedness.right;
+
   @override
   void initState() {
     super.initState();
@@ -68,6 +77,7 @@ class _RecordScreenState extends State<RecordScreen> {
           builder: (_) => AnalyzingScreen(
             videoPath: file.path,
             drills: widget.drills,
+            handedness: _handedness,
             targeting: _targeting,
           ),
         ),
@@ -101,6 +111,10 @@ class _RecordScreenState extends State<RecordScreen> {
                   onTargetingChanged: _isRecording
                       ? null
                       : (value) => setState(() => _targeting = value),
+                  handedness: _handedness,
+                  onHandednessChanged: _isRecording
+                      ? null
+                      : (value) => setState(() => _handedness = value),
                 );
               },
             ),
@@ -122,6 +136,8 @@ class _CameraPreviewWithHint extends StatelessWidget {
     required this.controller,
     required this.targeting,
     required this.onTargetingChanged,
+    required this.handedness,
+    required this.onHandednessChanged,
   });
 
   final CameraController controller;
@@ -130,6 +146,11 @@ class _CameraPreviewWithHint extends StatelessWidget {
   /// Called when the golfer picks a focus fault; null disables the picker (e.g.
   /// while recording).
   final ValueChanged<String?>? onTargetingChanged;
+
+  final Handedness handedness;
+
+  /// Called when the golfer picks their handedness; null disables the control.
+  final ValueChanged<Handedness>? onHandednessChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -157,6 +178,11 @@ class _CameraPreviewWithHint extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
+              _HandednessSelector(
+                value: handedness,
+                onChanged: onHandednessChanged,
+              ),
+              const SizedBox(height: 8),
               _TargetSelector(
                 value: targeting,
                 onChanged: onTargetingChanged,
@@ -165,6 +191,56 @@ class _CameraPreviewWithHint extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Lets the golfer say which hand they swing with.
+///
+/// Not a preference: it selects the wrist the phase detector tracks, and every
+/// fault measurement and the tempo ratio are sampled at the frame indices that
+/// produces. Until this existed the app analyzed every golfer as right-handed.
+class _HandednessSelector extends StatelessWidget {
+  const _HandednessSelector({required this.value, required this.onChanged});
+
+  final Handedness value;
+  final ValueChanged<Handedness>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.sports_golf, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          const Text('I swing', style: TextStyle(color: Colors.white70)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SegmentedButton<Handedness>(
+              segments: const [
+                ButtonSegment(
+                  value: Handedness.right,
+                  label: Text('Right-handed'),
+                ),
+                ButtonSegment(
+                  value: Handedness.left,
+                  label: Text('Left-handed'),
+                ),
+              ],
+              selected: {value},
+              showSelectedIcon: false,
+              onSelectionChanged: onChanged == null
+                  ? null
+                  : (selection) => onChanged!(selection.first),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
