@@ -40,13 +40,18 @@ typedef ProgressCallback = void Function(
 class SwingAnalyzer {
   SwingAnalyzer({
     required this.drills,
-    Handedness handedness = Handedness.right,
+    this.handedness = Handedness.right,
     FrameExtractor? frameExtractor,
     PoseEstimator? poseEstimator,
   })  : _frameExtractor = frameExtractor ?? FrameExtractor(),
         _poseEstimator = poseEstimator ?? PoseEstimator(handedness: handedness);
 
   final List<Drill> drills;
+
+  /// Which wrist phase detection tracks. Recorded on every swing so a record
+  /// analyzed on the wrong wrist stays identifiable in the corpus.
+  final Handedness handedness;
+
   final FrameExtractor _frameExtractor;
   final PoseEstimator _poseEstimator;
 
@@ -167,6 +172,13 @@ class SwingAnalyzer {
         posture: posture,
         tempo: tempo,
         targeting: targeting,
+        // Capture context: none of this survives the frame cleanup below, so it
+        // is written now or lost for this swing permanently.
+        fps: fps,
+        frameCount: features.length,
+        handedness: handedness,
+        poseCoverageFraction: poseCoverage(features),
+        frames: FrameSeries.fromFeatures(features),
       ),
     );
   }
