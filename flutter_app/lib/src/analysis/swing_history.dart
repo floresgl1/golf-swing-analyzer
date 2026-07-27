@@ -432,8 +432,6 @@ class FaultComparison {
     required this.threshold,
   });
 
-  double get delta => current - previous;
-
   /// Display label, e.g. "Head sway".
   String get label => faultLabels[faultId] ?? faultId;
 

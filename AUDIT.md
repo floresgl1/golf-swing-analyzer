@@ -5,8 +5,8 @@
 
 ## Preliminary notes (read first)
 
-- **`ROADMAP.md` does not exist** — not in the working tree and not in git history on any branch. It could not be used for architecture context; this audit treats the code as the source of truth. If a ROADMAP exists elsewhere, some "intended design" judgments below may need revisiting.
-- **`swing_history.json` does not exist** either — no references anywhere in the code. It appears to be a planned/future feature. Item 8 is answered on that basis.
+- **CORRECTED (Phase 0):** this audit originally recorded that `ROADMAP.md` did not exist "in the working tree and not in git history on any branch", and treated the code as the sole source of truth. That was wrong at the time of writing on `main`, which has carried a roadmap since `93aeca3`. `ROADMAP.md` on this branch is now the canonical one. Any "intended design" judgment below that was reached without it should be re-read against it.
+- **`swing_history.json`**: at the time of the audit no Python `swing_history.py`/`data/swing_history.json` existed on this branch — item 8 and A1 are answered on that basis. Both exist on `main` (see A1's note).
 - **Branch reality:** `flutter-mvp` contains *both* the Python code (including `drill_recommender.py`) and the Flutter app; `main` has the Python prototype **without** `drill_recommender.py` or the drill integration in `faults.py`. Python findings below apply to both branches unless noted.
 
 ## Severity legend
@@ -261,9 +261,15 @@ The app doesn't crash, because `analyzing_screen.dart` wraps `store.append(...)`
 
 ### A4 🟠 The `targeting`/focus-fault path is dead in practice
 
-`SwingSession.targeting` drives a chunk of UI: the "You were working on: …" line, the `(your focus)` row tag, and `_focusVerdict` ("your focus fault improved / hasn't improved"). But **nothing ever sets `targeting`** — `swing_analyzer._buildReport` calls `buildSession(...)` without it (`swing_analyzer.dart:153`), and no screen collects it. So `focusFault` is always null and none of that UI ever renders in the running app (only tests pass a value).
+**RESOLVED — this finding is historical; both halves of it have since changed.**
 
-**Proposed fix:** wire a small "what are you working on today?" picker (e.g., on the record screen) that flows into `buildSession(targeting: …)`; or, if out of scope for the MVP, drop the focus UI/field until it's connected so it isn't dead weight.
+As written: `SwingSession.targeting` drove UI (a "You were working on: …" line, a `(your focus)` row tag, and `_focusVerdict`, "your focus fault improved / hasn't improved") that nothing ever populated, because `swing_analyzer._buildReport` called `buildSession(...)` without it and no screen collected it.
+
+What happened since:
+- `b400b50` wired a focus picker on the record screen through to `buildSession(targeting: …)`, so the field is populated in the running app.
+- `62b0cb8` (the beta-softening pass) removed the cross-session focus UI this finding named. `_focusVerdict` no longer exists; the comparison card renders raw previous → current values with no trend or verdict. See the guardrail note on `SwingComparison.between`.
+
+The surviving focus UI is the per-swing "Your focus this swing" marker on the report card, which is populated and rendered.
 
 ### A5 🟡 New tunable constants, un-cross-checked
 

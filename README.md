@@ -56,7 +56,9 @@ Modules:
 ## Flutter app
 
 A "record then analyze" MVP: record a swing, extract frames, run on-device pose
-estimation, then show a report with fault verdicts and drills. See
+estimation, then show a report with the four fault measurements and drills. The
+report presents them tentatively — the reference values are unvalidated, so it
+measures and shows rather than judging. See
 [`flutter_app/README.md`](flutter_app/README.md) for the required Flutter SDK
 version, camera-permission setup for iOS/Android, and build/run/test steps.
 
