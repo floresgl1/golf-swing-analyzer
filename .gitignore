@@ -29,5 +29,23 @@ validation/golfdb/spotcheck_wrist.png
 # OS files
 .DS_Store
 Thumbs.db
+
 # Claude Code local settings
 .claude/settings.local.json
+
+# --- Flutter / Dart (flutter_app/) ---
+# Build + tooling artifacts
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+*.iml
+
+# Generated platform folders (recreate with `flutter create .`)
+flutter_app/android/
+flutter_app/ios/
+flutter_app/linux/
+flutter_app/macos/
+flutter_app/windows/
+flutter_app/web/

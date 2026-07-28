@@ -1,0 +1,38 @@
+name: golf_swing_analyzer
+description: >-
+  Cross-platform golf swing analyzer. Records a swing, runs on-device pose
+  estimation, detects swing phases and faults, and recommends drills.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Camera capture ("record then analyze").
+  camera: ^0.11.0
+
+  # On-device pose estimation — the mobile counterpart to MediaPipe Tasks.
+  google_mlkit_pose_detection: ^0.14.0
+
+  # Frame extraction from the recorded video (community fork of the retired
+  # ffmpeg_kit_flutter). Swap for any frame extractor if you prefer.
+  ffmpeg_kit_flutter_new: ^4.5.2
+
+  # Temp directories + path joining for extracted frames.
+  path_provider: ^2.1.0
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/drills.json

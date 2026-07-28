@@ -62,17 +62,99 @@ Design notes:
 - Dart analysis modules mirror Python logic with identical thresholds and windowing
 - drills.json bundled as asset
 - **Key files**: `flutter_app/lib/src/analysis/`, `flutter_app/lib/src/ui/`
-- **Branch**: `flutter-mvp`
+- **Location**: `flutter_app/` in the trunk. (Was the `flutter-mvp` branch; merged — see Branch reconciliation below.)
 
 ### Phase 7 — Verification Loop ✅
 - `data/swing_history.json`: per-session storage of all fault values, tempo, and optional target fault
 - Session comparison: previous → current value per fault, improved/worsened/unchanged (epsilon-aware)
-- Threshold crossing callouts: "fault fixed!" / "NEW fault"
-- New faults auto-recommend the easiest drill from the library
-- Targeting: `python src/faults.py head_sway` marks focus fault, next run annotates with "← your focus"
+- Threshold crossing callouts: "fault fixed!" / "NEW fault" — **Python only. Removed from the app UI**; see the Beta decision record below
+- New faults auto-recommend the easiest drill from the library — Python only, same reason
+- Targeting: `python src/faults.py head_sway` marks focus fault, next run annotates with "← your focus". In the app this is a picker on the record screen
 - Tempo judged by distance from 3:1 benchmark (not raw lower-is-better)
-- Dart port with `SwingHistoryStore` and `SwingComparisonView` widget
-- **Key files**: `src/swing_history.py`, `flutter_app/lib/src/analysis/swing_history.dart`, `flutter_app/lib/src/ui/widgets/swing_comparison_view.dart` (on `flutter-mvp`)
+- Dart port with `SwingHistoryStore` and `SwingComparisonView` widget. **The Dart widget renders previous → current values only** — the trend and crossing machinery is computed, kept unit-tested, and deliberately not surfaced
+- **Key files**: `src/swing_history.py`, `flutter_app/lib/src/analysis/swing_history.dart`, `flutter_app/lib/src/ui/widgets/swing_comparison_view.dart`
+
+---
+
+## Beta — decision record (2026-07-26)
+
+*Folded in from a second `ROADMAP.md` that existed on `flutter-mvp`. The two
+files shared only a filename: this one tracked the project, that one recorded
+the beta presentation decisions. This is now the single canonical roadmap.*
+
+Goal of the beta is to test **retention** and to passively accumulate a corpus of
+real swings — not to prove the detectors are right. The fault thresholds in
+`faults.py` / `faults.dart` have never been validated against a labelled corpus,
+so the app's presentation was pulled back to match what the data can actually
+support.
+
+- **Fault presentation is tentative, not definitive.** A flagged fault renders as
+  "Possible early extension" with a `POSSIBLE` chip, the measured value, and the
+  threshold labelled a "beta reference" rather than a verdict line. The report
+  carries a standing caveat that measurements are indicative and unvalidated.
+  Detection, thresholds, and the drill recommendations attached to each flagged
+  fault are unchanged.
+
+- **Cross-session judgment is not rendered.** The report's comparison card shows
+  only raw previous → current measured values ("Last swing vs this swing"). The
+  improved/worsened/unchanged trends, the FIXED / NEW FAULT badges, and the
+  "you cleared X" / "the practice is paying off" callouts have been removed from
+  the UI.
+
+  Reason: with unvalidated thresholds, a threshold crossing between two swings
+  may be measurement noise rather than a change in the golfer's swing, so
+  "improved", "fixed", and "new fault" are conclusions the data cannot support.
+  Telling a beta tester they improved when we cannot show it is the one claim
+  most likely to cost trust.
+
+  The `Trend` / `Crossing` machinery in `swing_history.dart` is **kept and stays
+  unit-tested** — it is computed on every comparison and simply not read by the
+  view. See the guardrail note on `SwingComparison.between`. Do not re-surface it
+  in the UI until the thresholds are validated.
+
+**Note the asymmetry with Python.** `src/swing_history.py` still prints the full
+verdict set — direction words, "fault fixed!", "NEW fault", the focus-fault
+callout. That is deliberate and not an oversight: the Python side is a research
+tool read by people who know the thresholds are uncalibrated. The app is read by
+beta testers who do not. Do not "restore parity" by copying the Python
+presentation into Dart, and do not strip it from Python to match the app.
+
+### Exit criteria for restoring cross-session verdicts
+
+1. Enough beta swings collected to form a labelled corpus (currently the history
+   is device-local only, so collection needs a path off the device first).
+2. Per-fault thresholds validated against that corpus, with a known false-positive
+   rate. This is **P0.1 + P0.2** below — the same work, not a second effort.
+3. Per-fault measurement noise quantified, so a between-session delta can be
+   distinguished from repeat-measurement variance. This is the noise floor P0.1
+   specifies.
+
+Until all three hold, the report measures and shows; it does not judge.
+
+---
+
+## Branch reconciliation (2026-07-27)
+
+`main` and `flutter-mvp` are merged into one trunk. Previously `main` held the
+Python pipeline, validation harness and pytest suite but no `flutter_app/`,
+because `e86c8cf` ("Revert 'Add Flutter MVP port of the golf swing analyzer'")
+was in its history; `flutter-mvp` held the app plus an older copy of `src/`.
+
+A direct merge in either direction proposed **deleting 19 Flutter files
+silently**, because the merge base contained `flutter_app/` and `main` had
+deleted it. The fix was to neutralize the revert first (`git revert e86c8cf`)
+and then merge on content, which reduced the conflict set to two documentation
+files.
+
+Verified before merging: `flutter-mvp` carried **no unique Python edit** —
+`git diff origin/main...origin/flutter-mvp -- src/` was empty, every `src/` blob
+on `flutter-mvp` existed in `main`'s history, and no commit unique to
+`flutter-mvp` touched any `.py` file. So `main`'s `src/` is a strict superset and
+was taken wholesale.
+
+Recovered in passing: `34094e9` ("Fall back to an empty drill list when
+drills.json fails to parse") had a Dart half that `e86c8cf` deleted as collateral
+damage and `flutter-mvp` never received. Reverting the revert restored it.
 
 ---
 
@@ -234,7 +316,11 @@ The pipeline architecture (pose → phases → features → faults → drills �
 - `README.md` has a table mapping Python modules to Dart equivalents
 - Keep `drills.json` in sync between `data/` and `flutter_app/assets/`
 - Thresholds are defined as constants in both codebases — update both when calibrating
-- **KNOWN DIVERGENCE (intentional, tracked):** the P0.3 fps windowing refactor (duration-based constants + `frames_for`) is Python-only for now. The Dart port still uses hard-coded frame counts. This is deliberate — the port is held until the Python side is validated against the corpus (per P0.2), so an unvalidated change isn't mirrored into two codebases. Port `frames_for` + the seconds constants to Dart together with the P0.2 recalibration, not before.
+- **KNOWN DIVERGENCE (intentional, tracked) — the parity rule's one standing exception.** The P0.3 fps windowing refactor (duration-based constants + `frames_for`) is **Python-only**. Python resolves every smoothing/median window from a duration at the capture rate; **Dart still uses hard-coded frame counts** (`takeaway - 10`, `radius: 2`, `radius: 3`, `smooth = 5`, inline literals in `faults.dart` / `swing_phases.dart`).
+
+  This is deliberate — the port is held until the Python side is validated against the corpus (per P0.2), so an unvalidated change isn't mirrored into two codebases. Port `frames_for` + the seconds constants to Dart together with the P0.2 recalibration, not before.
+
+  Now that both codebases live in one tree the divergence is easy to trip over, so state the consequence plainly: **a frame count is a fixed duration only at one frame rate.** The Dart constants were tuned at 240 fps; typical phone capture is 30, so the app measures over roughly 8× longer windows than the thresholds printed beside its numbers assume. The Dart values are therefore not directly comparable to the Python ones on the same clip. Do not "fix" this by changing either side's constants in isolation — that is P0.2's recalibration, and it must move Python first, then Dart, against the corpus.
 
 ### Key Design Decisions (do not change without discussion)
 - **Eye midpoint** for head tracking (not nose) — rotation-stable proxy
