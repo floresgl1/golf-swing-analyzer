@@ -6,15 +6,20 @@ import 'widgets/drill_tile.dart';
 import 'widgets/fault_card.dart';
 import 'widgets/swing_comparison_view.dart';
 
-/// The swing report: tempo summary, the four fault verdicts, drills nested
-/// under each flagged fault, and — from the second swing on — progress vs the
-/// previous session.
+/// The swing report: tempo summary, the four fault measurements, drills nested
+/// under each flagged fault, and — from the second swing on — a raw value
+/// comparison against the previous session.
+///
+/// Fault language is deliberately tentative and the comparison carries no
+/// verdict: the thresholds are unvalidated, so the report measures and shows,
+/// it does not judge.
 class ReportScreen extends StatelessWidget {
   const ReportScreen({super.key, required this.analysis, this.comparison});
 
   final SwingAnalysis analysis;
 
-  /// Progress vs the previous stored session; null on the first swing.
+  /// Measured values from the previous stored session alongside this one; null
+  /// on the first swing. Carries no improvement judgment.
   final SwingComparison? comparison;
 
   @override
@@ -34,11 +39,13 @@ class ReportScreen extends StatelessWidget {
       ),
       body: ListView(
         children: [
+          const _BetaCaveat(),
           _TempoSummary(analysis: analysis),
-          const _SectionHeader('Fault check'),
-          for (final verdict in analysis.faults)
+          const _SectionHeader('What we measured'),
+          for (final verdict in analysis.faultsByFocus)
             FaultCard(
               verdict: verdict,
+              isFocus: verdict.id == analysis.targeting,
               drills: [
                 for (final drill in analysis.recommendations[verdict.id] ??
                     const [])
@@ -49,6 +56,36 @@ class ReportScreen extends StatelessWidget {
           if (comparison != null)
             SwingComparisonView(comparison: comparison),
           const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+/// Beta honesty note: the reference values behind every flag on this screen are
+/// still unvalidated, so the report is indicative only.
+class _BetaCaveat extends StatelessWidget {
+  const _BetaCaveat();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.science_outlined,
+              size: 16, color: theme.colorScheme.outline),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Beta: these measurements are indicative only and have not been '
+              'validated against a reference set.',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.outline),
+            ),
+          ),
         ],
       ),
     );
@@ -84,7 +121,6 @@ class _TempoSummary extends StatelessWidget {
               Text(
                 'Ratio ${tempo.ratio.isFinite ? tempo.ratio.toStringAsFixed(1) : '—'} : 1  '
                 '(tour average ~3 : 1)',
-                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ],
             const SizedBox(height: 8),
@@ -122,17 +158,7 @@ class _CleanSwingBanner extends StatelessWidget {
       color: Colors.green.withValues(alpha: 0.12),
       child: const Padding(
         padding: EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Icon(Icons.emoji_events, color: Colors.green),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'No faults flagged — nice swing! Keep grooving that move.',
-              ),
-            ),
-          ],
-        ),
+        child: Text('Nothing flagged in this swing.'),
       ),
     );
   }

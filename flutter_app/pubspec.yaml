@@ -21,7 +21,7 @@ dependencies:
 
   # Frame extraction from the recorded video (community fork of the retired
   # ffmpeg_kit_flutter). Swap for any frame extractor if you prefer.
-  ffmpeg_kit_flutter_new: ^1.6.0
+  ffmpeg_kit_flutter_new: ^4.5.2
 
   # Temp directories + path joining for extracted frames.
   path_provider: ^2.1.0

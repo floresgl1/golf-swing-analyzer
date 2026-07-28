@@ -4,6 +4,32 @@ Analyze a golf swing from a single video using [MediaPipe Pose](https://ai.googl
 and OpenCV. The pipeline estimates body pose per frame, segments the swing into
 phases, measures tempo and body angles, and flags common swing faults.
 
+## Two codebases, one tree
+
+| Part | Location | Role |
+| --- | --- | --- |
+| **Python prototype** | `src/`, `data/`, `tests/`, `validation/` | Reference implementation and research playground — where the detection logic is developed, tuned and validated. **Source of truth.** |
+| **Flutter app** | [`flutter_app/`](flutter_app/) | Android/iOS MVP that ports the same logic to Dart and runs it on-device from a recorded swing. |
+
+The Dart side is a faithful port of the Python detection logic — same algorithms,
+same thresholds, same normalization:
+
+| Concern | Python (`src/`) | Dart (`flutter_app/lib/src/analysis/`) |
+| --- | --- | --- |
+| Pose estimation | MediaPipe Tasks (`pose_estimation.py`) | ML Kit (`services/pose_estimator.dart`) |
+| Swing phases + tempo | `swing_phases.py` | `swing_phases.dart` |
+| Fault detectors (×4) | `faults.py` | `faults.dart` |
+| Drill recommendation | `drill_recommender.py` | `drill_recommender.dart` |
+| Drill library | `data/drills.json` | bundled `flutter_app/assets/drills.json` |
+| Swing history + value comparison | `swing_history.py` (`data/swing_history.json`) | `swing_history.dart` (app documents dir) |
+
+**Known divergence (intentional, tracked):** the P0.3 frame-rate-invariance
+refactor — duration-based window constants resolved via `frames_for()` — is
+**Python-only**. The Dart port still uses hard-coded frame counts. This is
+deliberate: the port is held until the Python side is validated against a
+corpus, so an unvalidated change isn't mirrored into two codebases. See
+[ROADMAP.md](ROADMAP.md).
+
 ## Features
 
 - **Pose estimation & skeleton overlay** — draws the body skeleton on every frame
@@ -20,6 +46,11 @@ phases, measures tempo and body angles, and flags common swing faults.
   previous session: per-fault previous → current values, improved/worsened
   verdicts, threshold crossings ("fault fixed" / "NEW fault" with a starter
   drill), and tempo drift vs. the 3:1 benchmark.
+  **Python only.** The Dart port computes the same trends and crossings but the
+  app deliberately does not render them — with unvalidated thresholds a crossing
+  between two swings may be measurement noise rather than a change in the
+  golfer's swing. See the guardrail note on `SwingComparison.between` and the
+  Beta section of [ROADMAP.md](ROADMAP.md).
 
 ## Requirements
 
@@ -127,5 +158,11 @@ data/                  model + video (not tracked); drill library + swing histor
 output/                generated plots, montage, annotated video (not tracked)
 ```
 
-The Flutter mobile app — including the Dart port of the swing history and
-progress comparison — lives on the `flutter-mvp` branch under `flutter_app/`.
+```
+flutter_app/           Android/iOS app: the Dart port + record-then-analyze UI
+tests/                 pytest suite (characterization + robustness)
+validation/golfdb/     GolfDB screening and phase-detection harness
+```
+
+See [`flutter_app/README.md`](flutter_app/README.md) for the Flutter SDK
+version, camera-permission setup for iOS/Android, and build/run/test steps.

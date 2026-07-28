@@ -165,4 +165,96 @@ void main() {
       expect(sessions.last.faults[faultEarlyExtension]!.flagged, isTrue);
     });
   });
+
+  group('preserves unknown keys (forward compatibility)', () {
+    test('fromJson/toJson keeps keys the model does not know', () {
+      final raw = {
+        'timestamp': '2026-07-14T18:02:11-06:00',
+        'faults': {
+          faultHeadSway: {
+            'value': 0.18,
+            'threshold': swayThreshold,
+            'flagged': true,
+            'confidence': 0.9, // a fault-level field a future writer added
+          },
+        },
+        'tempo_ratio': 2.4,
+        'targeting': faultHeadSway,
+        'coach_note': 'head still', // a session-level field we don't model
+      };
+
+      final out = SwingSession.fromJson(raw).toJson();
+
+      // Unknown keys survive at both the session and the fault level.
+      expect(out['coach_note'], 'head still');
+      final head = (out['faults'] as Map)[faultHeadSway] as Map;
+      expect(head['confidence'], 0.9);
+      // ...while the modeled fields stay canonical.
+      expect(out['targeting'], faultHeadSway);
+      expect(head['value'], 0.18);
+    });
+
+    test('an unknown key survives a store load/append/reload cycle', () async {
+      final dir = Directory.systemTemp.createTempSync('swing_history_unknown');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/swing_history.json');
+
+      // A history file as another writer (e.g. the Python pipeline) might leave
+      // it, carrying fields this Dart model does not know about.
+      file.writeAsStringSync(jsonEncode({
+        'sessions': [
+          {
+            'timestamp': '2026-07-14T18:02:11-06:00',
+            'faults': {
+              faultHeadSway: {
+                'value': 0.18,
+                'threshold': swayThreshold,
+                'flagged': true,
+                'confidence': 0.9,
+              },
+              faultReversePivot: {
+                'value': -0.05,
+                'threshold': reversePivotThreshold,
+                'flagged': false,
+              },
+              faultEarlyExtension: {
+                'value': 0.04,
+                'threshold': earlyExtensionThreshold,
+                'flagged': false,
+              },
+              faultLossOfPosture: {
+                'value': 5.0,
+                'threshold': postureThreshold,
+                'flagged': false,
+              },
+            },
+            'tempo_ratio': 2.4,
+            'targeting': faultHeadSway,
+            'coach_note': 'keep your head still',
+          },
+        ],
+      }));
+
+      final store = SwingHistoryStore(file);
+      // append() rewrites the whole file via toJson -- the path that used to
+      // drop unknown keys from every session it re-serialized.
+      await store.append(current);
+
+      // Inspect the persisted JSON directly: the first session's unknown keys
+      // must still be there.
+      final reloaded =
+          jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      final first = (reloaded['sessions'] as List).first as Map<String, dynamic>;
+      expect(first['coach_note'], 'keep your head still');
+      final head =
+          (first['faults'] as Map<String, dynamic>)[faultHeadSway] as Map;
+      expect(head['confidence'], 0.9);
+
+      // ...and the store still parses everything, modeled fields intact.
+      final sessions = await store.load();
+      expect(sessions, hasLength(2));
+      expect(sessions.first.targeting, faultHeadSway);
+      expect(sessions.first.faults[faultHeadSway]!.value, 0.18);
+    });
+  });
 }

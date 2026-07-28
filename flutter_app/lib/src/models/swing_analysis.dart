@@ -8,9 +8,14 @@ import '../analysis/swing_history.dart';
 import '../analysis/swing_phases.dart';
 import 'drill.dart';
 
-/// A single fault's verdict plus a human-readable one-line detail, ready for the
-/// UI. Fault-specific numbers live in the detail string so the report screen
+/// A single fault's measurement plus a human-readable one-line detail, ready for
+/// the UI. Fault-specific numbers live in the detail string so the report screen
 /// stays generic.
+///
+/// [flagged] means the measurement passed the detector's reference value — not
+/// that the fault is confirmed. The report presents it tentatively (see
+/// [tentativeLabel]) because the thresholds have not been validated against a
+/// real corpus yet.
 class FaultVerdict {
   /// One of the fault ids in `faults.dart` (e.g. [faultHeadSway]).
   final String id;
@@ -28,6 +33,12 @@ class FaultVerdict {
     required this.flagged,
     required this.detail,
   });
+
+  /// The label as the report presents it: hedged while the thresholds are still
+  /// unvalidated, so a flagged fault reads as a possibility rather than a
+  /// finding. Plain [label] when nothing was flagged.
+  String get tentativeLabel =>
+      flagged ? 'Possible ${label.toLowerCase()}' : label;
 }
 
 class SwingAnalysis {
@@ -47,6 +58,11 @@ class SwingAnalysis {
   /// the swing-over-swing progress comparison.
   final SwingSession session;
 
+  /// The fault the golfer chose to work on for this swing (a fault id), or null
+  /// for a full swing check. Every detector still runs regardless; this only
+  /// marks the report's focus and floats that fault to the top.
+  final String? targeting;
+
   const SwingAnalysis({
     required this.phases,
     required this.tempo,
@@ -55,10 +71,28 @@ class SwingAnalysis {
     required this.faults,
     required this.recommendations,
     required this.session,
+    this.targeting,
   });
 
   List<FaultVerdict> get flaggedFaults =>
       faults.where((f) => f.flagged).toList();
 
   bool get anyFlagged => faults.any((f) => f.flagged);
+
+  /// The verdicts with the focus fault (if any) floated to the top; otherwise
+  /// the stable report order is preserved.
+  List<FaultVerdict> get faultsByFocus => orderByFocus(faults, targeting);
+}
+
+/// Reorder [faults] so the golfer's [targeting] fault comes first, keeping every
+/// other verdict in its original order. Returns [faults] unchanged when nothing
+/// is targeted. Pure so the report ordering stays unit-testable.
+List<FaultVerdict> orderByFocus(List<FaultVerdict> faults, String? targeting) {
+  if (targeting == null) return faults;
+  final focus = <FaultVerdict>[];
+  final rest = <FaultVerdict>[];
+  for (final f in faults) {
+    (f.id == targeting ? focus : rest).add(f);
+  }
+  return [...focus, ...rest];
 }

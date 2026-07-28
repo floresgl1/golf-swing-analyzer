@@ -51,8 +51,13 @@ class SwingAnalyzer {
   final PoseEstimator _poseEstimator;
 
   /// Analyze the recorded video at [videoPath]. [onProgress] is optional.
+  ///
+  /// [targeting] is the fault the golfer chose to work on (a fault id), or null
+  /// for a full swing check. All four detectors run either way; targeting only
+  /// marks the report's focus and is recorded in the swing history.
   Future<SwingAnalysis> analyze(
     String videoPath, {
+    String? targeting,
     ProgressCallback? onProgress,
   }) async {
     onProgress?.call(AnalysisStage.extractingFrames, 0);
@@ -71,7 +76,7 @@ class SwingAnalyzer {
       }
 
       onProgress?.call(AnalysisStage.computingReport, 1);
-      return _buildReport(features, extracted.fps);
+      return _buildReport(features, extracted.fps, targeting);
     } finally {
       // Clean up the extracted JPEGs regardless of outcome.
       if (extracted.workingDir.existsSync()) {
@@ -80,7 +85,11 @@ class SwingAnalyzer {
     }
   }
 
-  SwingAnalysis _buildReport(List<FrameFeatures> features, double fps) {
+  SwingAnalysis _buildReport(
+    List<FrameFeatures> features,
+    double fps,
+    String? targeting,
+  ) {
     // Assemble parallel arrays, matching the lists built in faults.main().
     final eyeX = [for (final f in features) f.eyeX];
     final eyeY = [for (final f in features) f.eyeY];
@@ -110,7 +119,7 @@ class SwingAnalyzer {
         label: faultLabels[faultHeadSway]!,
         flagged: head.flagged,
         detail: 'Lateral sway ${_fmt(head.lateral)} torso-lengths '
-            '(threshold ${_fmt(swayThreshold)}). '
+            '(beta reference ${_fmt(swayThreshold)}). '
             'Vertical dip ${_fmt(head.vertical)} — informational.',
       ),
       FaultVerdict(
@@ -118,14 +127,14 @@ class SwingAnalyzer {
         label: faultLabels[faultReversePivot]!,
         flagged: pivot.flagged,
         detail: 'Spine lean ${_fmtSigned(pivot.reverse)} torso-lengths toward '
-            'target (threshold ${_fmt(reversePivotThreshold)}).',
+            'target (beta reference ${_fmt(reversePivotThreshold)}).',
       ),
       FaultVerdict(
         id: faultEarlyExtension,
         label: faultLabels[faultEarlyExtension]!,
         flagged: extension.flagged,
         detail: 'Pelvis rise ${_fmtSigned(extension.rise)} torso-lengths '
-            '(threshold ${_fmt(earlyExtensionThreshold)}).',
+            '(beta reference ${_fmt(earlyExtensionThreshold)}).',
       ),
       FaultVerdict(
         id: faultLossOfPosture,
@@ -134,7 +143,7 @@ class SwingAnalyzer {
         detail: 'Spine tilt ${_fmtDeg(posture.tiltAddress)} → '
             '${_fmtDeg(posture.tiltImpact)} '
             '(straightened ${_fmtSignedDeg(posture.straighten)}, '
-            'threshold ${_fmtDeg(postureThreshold)}).',
+            'beta reference ${_fmtDeg(postureThreshold)}).',
       ),
     ];
 
@@ -150,12 +159,14 @@ class SwingAnalyzer {
       frameCount: features.length,
       faults: faultVerdicts,
       recommendations: recommendations,
+      targeting: targeting,
       session: buildSession(
         head: head,
         pivot: pivot,
         extension: extension,
         posture: posture,
         tempo: tempo,
+        targeting: targeting,
       ),
     );
   }

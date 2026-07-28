@@ -5,9 +5,14 @@
 
 ## Preliminary notes (read first)
 
-- **`ROADMAP.md` does not exist** — not in the working tree and not in git history on any branch. It could not be used for architecture context; this audit treats the code as the source of truth. If a ROADMAP exists elsewhere, some "intended design" judgments below may need revisiting.
-- **`swing_history.json` does not exist** either — no references anywhere in the code. It appears to be a planned/future feature. Item 8 is answered on that basis.
-- **Branch reality:** `flutter-mvp` contains *both* the Python code (including `drill_recommender.py`) and the Flutter app; `main` has the Python prototype **without** `drill_recommender.py` or the drill integration in `faults.py`. Python findings below apply to both branches unless noted.
+> **Read this first — the tree changed under this audit (2026-07-27).** This audit
+> was written against the `flutter-mvp` branch before it was merged with `main`.
+> The branches are now one trunk, which invalidates several of its premises. The
+> corrections below are inline; findings not marked otherwise still stand.
+
+- ~~**`ROADMAP.md` does not exist** — not in the working tree and not in git history on any branch.~~ **WRONG WHEN WRITTEN.** `ROADMAP.md` had existed on `main` since `93aeca3`; it was simply not on the branch this audit was run against. The audit therefore reached its "intended design" judgments without it, and any such judgment should be re-read against `ROADMAP.md`, which is now canonical and in this tree.
+- ~~**`swing_history.json` does not exist** either — no references anywhere in the code.~~ **NO LONGER TRUE.** Both `src/swing_history.py` and `data/swing_history.json` are in the tree after the merge; they were `main`-only at the time of writing. See A1.
+- ~~**Branch reality:** `flutter-mvp` contains *both* the Python code and the Flutter app; `main` has the Python prototype without `drill_recommender.py`.~~ **SUPERSEDED.** There is one trunk. It carries `main`'s Python (the newer copy: P0.3 fps refactor, atomic writes, corrupt recovery, the pytest suite, and `validation/golfdb/`) plus the Flutter app from `flutter-mvp`. Python findings below were written against the older `src/` copy and may already be fixed on the newer one — check before acting on them.
 
 ## Severity legend
 
@@ -237,9 +242,15 @@ Added after the original audit: a swing-over-swing "verification loop" landed on
 
 Overall this is clean, well-decomposed code with strong pure-logic tests. Findings, worst first:
 
-### A1 🔴 Claims to port a `src/swing_history.py` that does not exist (parity + docs)
+### A1 ✅ RESOLVED BY THE MERGE — ~~Claims to port a `src/swing_history.py` that does not exist~~
 
-`swing_history.dart` says it is "ported from `src/swing_history.py` (the verification loop)" and that `buildSession` is "the counterpart of `build_session` in `src/swing_history.py`." Both READMEs now list a Python `swing_history.py` (`data/swing_history.json`) in the parity table. **No such Python file exists** (verified on both branches).
+**Resolved 2026-07-27.** The file exists. `src/swing_history.py` and `data/swing_history.json` were on `main` all along and are now in this tree; the audit branch simply did not have them. No action needed — the option (a) recommended below turned out to be already done elsewhere.
+
+One caveat survives: the interchangeability claim is *narrower* than the docstring implies. The Python side writes a single `{"sessions": [...]}` document and stamps `datetime.now().astimezone().isoformat(timespec='seconds')`; the Dart side writes `DateTime.toIso8601String()`, which carries **no UTC offset** for a local time. The field names line up, so a converter is trivial, but the two files are not byte-interchangeable today.
+
+The original finding, for the record:
+
+`swing_history.dart` says it is "ported from `src/swing_history.py` (the verification loop)" and that `buildSession` is "the counterpart of `build_session` in `src/swing_history.py`." Both READMEs now list a Python `swing_history.py` (`data/swing_history.json`) in the parity table. **No such Python file exists** (verified on both branches *as they stood then* — it was on `main`, which the audit did not inspect).
 
 Consequences:
 - Unlike every other module, this feature has **no Python source of truth**, so its logic and its new constants (see A5) are **un-cross-checked** — the parity guarantee the rest of the project relies on doesn't hold here.
@@ -259,11 +270,13 @@ The app doesn't crash, because `analyzing_screen.dart` wraps `store.append(...)`
 
 `append()` (`swing_history.dart:343`) rewrites the whole file in place with `file.writeAsString(...)`. If the app is killed or storage fills mid-write, the file is left truncated/corrupt and **all prior sessions are lost** (compounding A2). **Proposed fix:** write to a temp file then atomically rename over the target (and/or keep a `.bak`). Standard durable-write pattern for append-only local stores.
 
-### A4 🟠 The `targeting`/focus-fault path is dead in practice
+### A4 ✅ RESOLVED — ~~The `targeting`/focus-fault path is dead in practice~~
 
-`SwingSession.targeting` drives a chunk of UI: the "You were working on: …" line, the `(your focus)` row tag, and `_focusVerdict` ("your focus fault improved / hasn't improved"). But **nothing ever sets `targeting`** — `swing_analyzer._buildReport` calls `buildSession(...)` without it (`swing_analyzer.dart:153`), and no screen collects it. So `focusFault` is always null and none of that UI ever renders in the running app (only tests pass a value).
+**Both halves of this finding have since changed.** `b400b50` wired a focus picker on the record screen through to `buildSession(targeting: …)`, so the field is populated in the running app. `62b0cb8` (the beta-softening pass) then removed the cross-session focus UI this finding named — `_focusVerdict` no longer exists, and the comparison card renders raw previous → current values with no trend or verdict. What survives is the per-swing "Your focus this swing" marker on the report card, which is both populated and rendered.
 
-**Proposed fix:** wire a small "what are you working on today?" picker (e.g., on the record screen) that flows into `buildSession(targeting: …)`; or, if out of scope for the MVP, drop the focus UI/field until it's connected so it isn't dead weight.
+The original finding, for the record:
+
+`SwingSession.targeting` drives a chunk of UI: the "You were working on: …" line, the `(your focus)` row tag, and `_focusVerdict` ("your focus fault improved / hasn't improved"). But **nothing ever sets `targeting`** — `swing_analyzer._buildReport` calls `buildSession(...)` without it, and no screen collects it. So `focusFault` is always null and none of that UI ever renders in the running app (only tests pass a value).
 
 ### A5 🟡 New tunable constants, un-cross-checked
 
