@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golf_swing_analyzer/src/analysis/faults.dart';
 import 'package:golf_swing_analyzer/src/analysis/swing_history.dart';
+import 'package:golf_swing_analyzer/src/analysis/swing_history_store.dart';
 
 /// Build a session from plain per-fault (value, flagged) pairs, using the real
 /// thresholds. Mirrors the synthetic sessions in the Python module's demo.
@@ -147,22 +148,27 @@ void main() {
   });
 
   group('SwingHistoryStore', () {
-    test('append returns null first, then the comparison; load round-trips',
+    test('first append is flagged as such; the second carries the comparison',
         () async {
       final dir = Directory.systemTemp.createTempSync('swing_history_test');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final store =
-          SwingHistoryStore(File('${dir.path}/swing_history.json'));
+      final store = SwingHistoryStore(File('${dir.path}/swing_history.jsonl'));
 
-      expect(await store.append(previous), isNull);
-      final cmp = await store.append(current);
-      expect(cmp, isNotNull);
-      expect(cmp!.fixedFaults, [faultHeadSway]);
+      final first = await store.append(previous);
+      expect(first.comparison, isNull);
+      expect(first.isFirstSwing, isTrue);
 
-      final sessions = await store.load();
-      expect(sessions, hasLength(2));
-      expect(sessions.first.targeting, faultHeadSway);
-      expect(sessions.last.faults[faultEarlyExtension]!.flagged, isTrue);
+      final second = await store.append(current);
+      expect(second.isFirstSwing, isFalse);
+      expect(second.comparison, isNotNull);
+      expect(second.comparison!.fixedFaults, [faultHeadSway]);
+
+      final loaded = await store.load();
+      expect(loaded.sessions, hasLength(2));
+      expect(loaded.skippedLines, 0);
+      expect(loaded.recoveredFromCorruption, isFalse);
+      expect(loaded.sessions.first.targeting, faultHeadSway);
+      expect(loaded.sessions.last.faults[faultEarlyExtension]!.flagged, isTrue);
     });
   });
 
@@ -197,11 +203,15 @@ void main() {
     test('an unknown key survives a store load/append/reload cycle', () async {
       final dir = Directory.systemTemp.createTempSync('swing_history_unknown');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final file = File('${dir.path}/swing_history.json');
+      final legacy = File('${dir.path}/swing_history.json');
+      final file = File('${dir.path}/swing_history.jsonl');
 
       // A history file as another writer (e.g. the Python pipeline) might leave
-      // it, carrying fields this Dart model does not know about.
-      file.writeAsStringSync(jsonEncode({
+      // it, carrying fields this Dart model does not know about. In the new
+      // line format this is also the legacy-migration path, so it exercises
+      // both: unknown keys must survive the format change, not just a
+      // re-serialize.
+      legacy.writeAsStringSync(jsonEncode({
         'sessions': [
           {
             'timestamp': '2026-07-14T18:02:11-06:00',
@@ -235,26 +245,31 @@ void main() {
         ],
       }));
 
-      final store = SwingHistoryStore(file);
-      // append() rewrites the whole file via toJson -- the path that used to
-      // drop unknown keys from every session it re-serialized.
+      final store = SwingHistoryStore(file, legacyFile: legacy);
+      // Migrates the legacy document into the line format, then appends -- both
+      // paths run every stored session back through toJson.
       await store.append(current);
 
-      // Inspect the persisted JSON directly: the first session's unknown keys
-      // must still be there.
-      final reloaded =
-          jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-      final first = (reloaded['sessions'] as List).first as Map<String, dynamic>;
+      // Inspect the persisted lines directly: the migrated session's unknown
+      // keys must still be there.
+      final lines = file.readAsStringSync().trim().split('\n');
+      // Header, migrated legacy session, then the appended one.
+      expect(lines, hasLength(3));
+      final first = jsonDecode(lines[1]) as Map<String, dynamic>;
       expect(first['coach_note'], 'keep your head still');
       final head =
           (first['faults'] as Map<String, dynamic>)[faultHeadSway] as Map;
       expect(head['confidence'], 0.9);
 
       // ...and the store still parses everything, modeled fields intact.
-      final sessions = await store.load();
-      expect(sessions, hasLength(2));
-      expect(sessions.first.targeting, faultHeadSway);
-      expect(sessions.first.faults[faultHeadSway]!.value, 0.18);
+      final loaded = await store.load();
+      expect(loaded.sessions, hasLength(2));
+      expect(loaded.sessions.first.targeting, faultHeadSway);
+      expect(loaded.sessions.first.faults[faultHeadSway]!.value, 0.18);
+
+      // The legacy file is renamed aside so migration cannot run twice.
+      expect(legacy.existsSync(), isFalse);
+      expect(File('${legacy.path}.migrated.bak').existsSync(), isTrue);
     });
   });
 }

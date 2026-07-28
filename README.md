@@ -9,7 +9,7 @@ phases, measures tempo and body angles, and flags common swing faults.
 | Part | Location | Role |
 | --- | --- | --- |
 | **Python prototype** | `src/`, `data/`, `tests/`, `validation/` | Reference implementation and research playground — where the detection logic is developed, tuned and validated. **Source of truth.** |
-| **Flutter app** | [`flutter_app/`](flutter_app/) | Android/iOS MVP that ports the same logic to Dart and runs it on-device from a recorded swing. |
+| **Flutter app** | [`flutter_app/`](flutter_app/) | Android/iOS MVP that ports the same logic to Dart and runs it on-device from a recorded swing. Its report shows the four fault **measurements**, presented tentatively — the reference values are unvalidated, so it measures and shows rather than judging. Every analyzed swing is also appended to an on-device corpus with the capture context needed to interpret it later (see Phase 0 in [ROADMAP.md](ROADMAP.md)). |
 
 The Dart side is a faithful port of the Python detection logic — same algorithms,
 same thresholds, same normalization:

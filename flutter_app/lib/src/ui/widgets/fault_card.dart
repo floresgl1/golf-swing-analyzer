@@ -28,7 +28,12 @@ class FaultCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final flagged = verdict.flagged;
     // Amber, not error red: this is something to look at, not a diagnosis.
-    final statusColor = flagged ? Colors.amber.shade800 : Colors.green.shade600;
+    //
+    // The unflagged side is deliberately neutral rather than green. Green reads
+    // as an all-clear, and the false-negative rate is exactly as unmeasured as
+    // the false-positive one — "we did not see this" is all the thresholds can
+    // support, in either direction.
+    final statusColor = flagged ? Colors.amber.shade800 : scheme.outline;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -63,7 +68,7 @@ class FaultCard extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  flagged ? Icons.info_outline : Icons.check_circle,
+                  flagged ? Icons.info_outline : Icons.remove_circle_outline,
                   color: statusColor,
                 ),
                 const SizedBox(width: 8),

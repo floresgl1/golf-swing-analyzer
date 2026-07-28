@@ -11,11 +11,13 @@ import 'dart:math' as math;
 
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
+import '../analysis/handedness.dart';
 import '../models/frame_features.dart';
 
-/// Which hand is the lead (target-side) hand. Right-handed golfers lead with the
-/// left wrist; lefties with the right. Mirrors `HANDEDNESS` in swing_phases.py.
-enum Handedness { right, left }
+// [Handedness] moved to the pure-Dart analysis layer (`analysis/handedness.dart`)
+// so the swing record can carry it without dragging the ML Kit dependency into
+// the testable core. Re-exported here so existing importers keep working.
+export '../analysis/handedness.dart' show Handedness;
 
 class PoseEstimator {
   PoseEstimator({this.handedness = Handedness.right})

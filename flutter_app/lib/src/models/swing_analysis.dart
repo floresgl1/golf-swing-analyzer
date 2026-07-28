@@ -74,9 +74,6 @@ class SwingAnalysis {
     this.targeting,
   });
 
-  List<FaultVerdict> get flaggedFaults =>
-      faults.where((f) => f.flagged).toList();
-
   bool get anyFlagged => faults.any((f) => f.flagged);
 
   /// The verdicts with the focus fault (if any) floated to the top; otherwise

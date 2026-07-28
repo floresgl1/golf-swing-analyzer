@@ -25,8 +25,13 @@ SwingAnalyzer                    assemble trajectory arrays, then:
    recommendDrills (from bundled assets/drills.json)
         │
         ▼
-ReportScreen                     tempo + 4 fault verdicts + drills per fault
+ReportScreen                     tempo + 4 fault measurements + drills per fault
 ```
+
+Every analyzed swing is also appended to the on-device corpus
+(`analysis/swing_history_store.dart`) with the capture context needed to
+interpret it later — frame rate, handedness, pose coverage, the per-frame
+arrays, and the measurement-basis stamps from `analysis/measurement_basis.dart`.
 
 ## What was ported from Python
 
@@ -50,7 +55,11 @@ Key details preserved exactly:
 - **Median windowing** — address values use the median over the 10 frames
   ending at the takeaway; impact/top/finish use a small median window (radius 2
   for head/pelvis at impact, radius 3 otherwise) so one bad frame can't flip a
-  verdict.
+  result. **These are frame counts, and that is a known divergence** — the
+  Python side converted them to durations in P0.3, and the Dart port is held at
+  frame counts deliberately until P0.2 recalibrates. A frame count is a fixed
+  duration only at one frame rate; these were tuned at 240 fps, so phone capture
+  measures over different windows than the thresholds assume. See `ROADMAP.md`.
 - **Thresholds** — sway `0.13`, dip `0.25` (informational), reverse pivot
   `0.12`, early extension `0.10`, loss of posture `12°`.
 - **Phase detection** — interpolate missing frames, smooth wrist *height*
@@ -65,9 +74,13 @@ requires no code change.
 ### Cross-checked against Python
 
 The Dart unit tests in `test/` use synthetic swings whose expected phase indices
-and fault verdicts were verified against the original Python detectors
+and fault results were verified against the original Python detectors
 (`top=29, impact=45, finish=60`; sway/early-extension/posture/reverse-pivot all
 flag at the constructed magnitudes). Run them with `flutter test`.
+
+This checks that the **port matches Python**, which is the only claim it makes.
+It is not evidence that the detectors are correct: the reference values have
+never been validated against a labelled corpus. See `ROADMAP.md`.
 
 ## Requirements
 
