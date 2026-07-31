@@ -400,3 +400,17 @@ The pipeline architecture (pose → phases → features → faults → drills �
 - Python: run `python src/swing_phases.py` to verify phase detection and tempo
 - Dart: `flutter test` runs unit tests with synthetic swing data that must match Python outputs
 - Any threshold change requires re-running against the full test video set
+
+### Commit signing in the container — the stop-hook "Unverified" report
+
+**The report describes a real condition, but the remedy it prints cannot fix it. Do not follow its suggested rebase target.** Both halves matter: dismissing the report as a false alarm is wrong, and so is running the fix it recommends.
+
+**The condition is real.** Commits made in this container carry no signature (`git log --format=%G?` prints `N`), and GitHub does label them Unverified. Signing *is* configured, in `/root/.gitconfig` — `commit.gpgsign=true`, `gpg.format=ssh`, `user.signingkey=/home/claude/.ssh/commit_signing_key.pub` — but the key material is absent: the public key is a 0-byte file and the matching private key does not exist. Nothing in the container can produce a signature.
+
+**The remedy cannot work.** The hook suggests setting `user.email`, then `git commit --amend --no-edit --reset-author` (or `git rebase --exec` for earlier commits). That addresses the *other* condition the hook checks — a committer email that isn't `noreply@anthropic.com` — which is already satisfied here; author and committer are both `Claude <noreply@anthropic.com>`. Amending rewrites authorship and commit hashes; it cannot conjure a key. Run against these commits it yields the identical unsigned result under new hashes, so the hook fires again on the rewritten history.
+
+Two workarounds look tempting and are worse than the problem:
+- **Generating a substitute SSH key.** GitHub verifies against keys registered to the account, so a container-made key still shows Unverified — while falsely asserting a signing identity.
+- **Setting `commit.gpgsign=false`.** This silences a configured control without producing a single verified commit.
+
+Resolving it for real requires a signing key provisioned in the environment *and* registered on the GitHub account. Once that exists, `git rebase --exec "git commit --amend --no-edit -S" <base>` signs the outstanding commits before push. Until then the badge is expected, and is not a defect in the change under review.
