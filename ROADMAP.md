@@ -442,6 +442,39 @@ The pipeline architecture (pose → phases → features → faults → drills �
 - **Lower is always better** for fault values; **tempo uses distance from 3:1** — different semantics
 - **Record-then-analyze** flow on mobile (not real-time) — simpler, more accurate
 
+### `_fold` is not order-independent at exactly ±90 — OPEN DECISION (2026-07-31)
+
+**The docstring states an invariant the code does not hold.** `line_angle`'s docstring (`src/body_angles.py:27-28`) says the result is "folded into [-90, 90] so it measures the line's tilt regardless of point order." That holds for every orientation except exactly vertical.
+
+`_fold` (`src/body_angles.py:35-40`) uses strict comparisons:
+
+```python
+a = np.where(a > 90, a - 180, a)
+a = np.where(a < -90, a + 180, a)
+```
+
+Exactly `-90.0` is not `< -90`, and exactly `+90.0` is not `> 90`, so neither is folded. A line and its reverse differ by 180°, so a vertical line gives two answers that disagree:
+
+```
+line_angle((0,0), (0,10))  == -90.0
+line_angle((0,10), (0,0))  == +90.0
+```
+
+Both values are already inside `[-90, 90]`, so both survive the fold unchanged. Every other orientation is fine — at `-89.9` the reverse is `+90.1`, which *does* fold back to `-89.9`. The defect is the boundary itself, not a general near-vertical instability.
+
+**Scope — narrower than it looks; read this before prioritizing it.** The reported angles are unaffected. The shoulder/hip numbers that get printed and analyzed (`src/body_angles.py:119-130`) come from `smooth_line_angles`, which never calls `_fold` — it squares the complex line vector, so the 180° wrap is handled correctly by construction. `_fold` is reached only by (a) the scalar `line_angle` helper and (b) `raw_shoulder` / `raw_hip` (`:117-118`), which are drawn as faint reference traces on the plot (`:135-136`) and never measured against. It also requires `dx` to be exactly `0.0`. This is an API-contract bug, not a live measurement bug.
+
+**The open decision (the human's to make):**
+
+1. **Fold at the boundary** — make one comparison inclusive (`>= 90` or `<= -90`) so a vertical line and its reverse agree, and the docstring's claim becomes unconditional. This picks a winner between `-90.0` and `+90.0`; the choice is arbitrary but must be documented, and it flips the sign of the raw plot traces on exactly-vertical frames.
+2. **Weaken the docstring** — record that order-independence holds except at exactly vertical, and leave the code alone. Cheapest, keeps every current output byte-identical, but leaves a sharp edge for any future caller that relies on the invariant.
+
+Do not take option 1 casually. `_fold` is applied to arrays as well as scalars, and `tests/test_body_angles.py:24` already pins `line_angle((0, 0), (0, -1)) == 90.0` — the `+90` side of this very asymmetry. Changing the fold flips that existing assertion.
+
+**A regression guard is already in place, and it is not a verdict.** `tests/test_line_angle.py::test_line_angle_vertical_reversal_is_asymmetric_today` asserts `down != up` deliberately, so the asymmetry cannot change silently. Those tests are CHARACTERIZATION captures: they pin current behavior, not confirmed-correct behavior. When this decision is settled, that test must be rewritten by hand — not deleted.
+
+Two related captures from the same probe, equally unverified: horizontal lines return **signed zero** (`-0.0` left-to-right, `+0.0` right-to-left, invisible to `== 0.0`), and a **degenerate `p1 == p2`** returns `-0.0` rather than `nan` or an exception. In a pose pipeline that second input arises whenever two landmarks collapse onto each other, and silently reading as "level" may not be the behavior you want.
+
 ### Testing
 - Python: run `python src/faults.py` against test videos, check all four verdicts
 - Python: run `python src/swing_phases.py` to verify phase detection and tempo
