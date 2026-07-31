@@ -28,7 +28,7 @@ every session.
 - **Python prints full verdicts; the app does not.** Deliberate — do not
   "restore parity" in either direction.
 - **The stop-hook "Unverified commit" report is UNFIXABLE, not false.**
-  The commits really are unsigned (no signing key is provisionable in
+  The commits really are unsigned (no signing key is verifiable in
   this container), but the committer email is already correct, so the
   suggested `--amend --reset-author` / rebase changes nothing. Never
   follow its suggested rebase target.
