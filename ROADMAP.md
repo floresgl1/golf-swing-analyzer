@@ -300,6 +300,53 @@ Why blocked: step 2 has no ground truth without the corpus. Doing step 1 alone s
 - Remaining seam: `main()` still uses container fps and pins windowing to `BASELINE_FPS`. When P0.1 lands a `capture_fps` metadata field per video (defaulting to `CAP_PROP_FPS` when they agree), thread it into `detect_phases`/detectors — that is the point where slow-mo vs real-time stops being a hidden variable.
 - **Left-handed golfers**: `HANDEDNESS` is a module constant with no per-run override — lefties are analyzed on the trail wrist (garbage phases). Parameterize before admitting lefties to the corpus.
 
+#### P0.4 — The Python threshold tests are vacuous — audit before recalibrating (2026-07-31)
+
+**`tests/test_faults.py` cannot detect a threshold change. This is measured, not suspected.** All four constants were mutated at once — `SWAY_THRESHOLD` 0.13→0.20, `REVERSE_PIVOT_THRESHOLD` 0.12→0.30, `EARLY_EXTENSION_THRESHOLD` 0.10→0.40, `POSTURE_THRESHOLD` 12.0→30.0, i.e. up to **3×** — and the suite stayed green:
+
+```
+=== pre-existing tests/test_faults.py AFTER mutation ===
+10 passed in 0.65s
+```
+
+**Mechanism.** Every boundary probe is computed *from* the constant it is supposed to pin (`tests/test_faults.py:60-62`):
+
+```python
+below = (SWAY_THRESHOLD - 0.01) * SCALE   # 0.12 * 100
+res = _head(below)
+assert res['lateral'] == pytest.approx(SWAY_THRESHOLD - 0.01)
+```
+
+Both the input *and* the expected value are derived from the threshold, so they slide together when it moves. The test reads as "0.12 does not flag, 0.14 does," but it actually asserts "`threshold - 0.01` does not flag, `threshold + 0.01` does" — true by construction for **any** threshold, including a badly wrong one. The probe never sits at a fixed point; it re-centers on whatever the constant currently is.
+
+**Why this blocks P0.** Recalibration's entire purpose is to change these constants. A green suite afterwards is not evidence the detectors still behave correctly — it is guaranteed in advance. Do not treat `tests/test_faults.py` as a safety net during the P0.2 recalibration; right now it is a net with no strings.
+
+**P0.3 already got this right — copy that discipline.** The fps windowing refactor explicitly "verified the suite catches a perturbed constant" (see P0.3 above). That one verification step is exactly what the threshold tests never had. Any threshold work should end with the same check.
+
+**The Dart side is already structurally correct, and is the model to copy.** `flutter_app/test/faults_test.dart:23-40` places its probes at fixed absolute values — `setRange(headX, 28, 32, 20)`, i.e. 0.20 torso-lengths, asserted with `closeTo(0.20, 1e-9)` — and mentions the threshold only in a comment. Move `swayThreshold` to 0.20 and that test goes red, correctly. (Checked for sway and early extension; the rest of the Dart suite was not audited.) This is one of the rare places where the port is in better shape than the Python source of truth.
+
+**The fix is structural, not more coverage.** Boundary probes must be **fixed absolute values placed on the decision boundary by a human**, never expressions in terms of the threshold. Do not attempt to repair this by tightening epsilons or adding cases — that leaves the defect untouched. When a threshold then moves, the test fails loudly, and a human decides whether the new behavior is right and updates the expected values deliberately. That failure *is* the feature.
+
+**Boundary convention, stated once so it stops being rediscovered per-detector: a value landing EXACTLY on a boundary falls on the no-action side.** Every verdict-producing comparison in `src/` is strict, without exception:
+
+```
+src/faults.py:113    'sway_flagged': lateral > sway_threshold
+src/faults.py:114    'dip_flagged':  vertical > dip_threshold
+src/faults.py:115    'flagged':      lateral > sway_threshold
+src/faults.py:144    'flagged':      reverse > threshold
+src/faults.py:169    'flagged':      rise > threshold
+src/faults.py:193    'flagged':      (tilt_addr - tilt_impact) > threshold
+src/body_angles.py:38-39   a > 90 / a < -90        (the _fold wrap)
+```
+
+So a metric exactly at its threshold is specified as **not** flagged, and an angle of exactly ±90 is specified as **not** folded. These read as two unrelated quirks — the fault-detector equality case and the `_fold` order-independence bug (see Architecture Notes) — but they are one convention appearing twice, and the second one is where it produces a documented defect.
+
+**Nothing tests exact equality anywhere.** Not `tests/test_faults.py` (its probes are at `threshold ± 0.01`), not `tests/test_body_angles.py`. The boundary is the one input where a strict-vs-inclusive slip is invisible to the entire suite. The red scaffold on `scaffold/fault-threshold-boundaries` targets exactly this gap for the four detectors.
+
+The `>=` comparisons elsewhere in `src/` are a different kind and are not counter-examples: they are tie-breaks and bounds guards (`faults.py:139` `hip_fin >= hip_addr` resolving the static-hip tie to `+1.0`, `faults.py:348` `len(path) >= 2`, the `swing_phases.py` fps/window guards), not verdicts. The `faults.py:139` tie-break is the one place equality is deliberately resolved to the positive side, and it is itself unverified — confirm it is intended when recalibrating, because it decides which way "toward target" points.
+
+**Method, for whoever redoes this audit:** mutate a constant in `src/faults.py`, run pytest, confirm the suite goes red, restore the constant. If it stays green, the test is vacuous. This same property was independently reproduced in a generated characterization file during a sub-agent probe; that file was deleted and the finding above rests on `tests/test_faults.py` alone, which predates it.
+
 ### P1 — Flutter Device Testing
 **Status**: Not started
 **Goal**: Validate the mobile experience end-to-end on a real device.
