@@ -29,6 +29,13 @@ jobs:
           channel: stable
           cache: true
 
+      # Platform folders are gitignored in this repo and regenerated on
+      # demand, so the runner's checkout has no ios/ directory at all.
+      # --project-name is explicit because the directory (flutter_app) does
+      # not match the pubspec name (golf_swing_analyzer).
+      - name: Generate iOS platform files
+        run: flutter create --platforms=ios --project-name golf_swing_analyzer .
+
       - name: Install dependencies
         run: flutter pub get
 
