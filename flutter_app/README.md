@@ -89,7 +89,8 @@ never been validated against a labelled corpus. See `ROADMAP.md`.
 - A **physical device** — the camera, ML Kit pose model, and ffmpeg do not run
   on simulators/emulators reliably. Use a real Android phone or iPhone.
 - **Android**: `minSdkVersion 24` (ML Kit needs 21, ffmpeg needs 24, so 24 wins).
-- **iOS**: deployment target **12.0+**, built with Xcode on macOS.
+- **iOS**: deployment target **15.5+** — the floor imposed by ML Kit
+  (`google_mlkit_commons`); anything lower fails `pod install`.
 
 ## Building and running
 
@@ -147,9 +148,15 @@ android {
 <string>Record your golf swing so the app can analyze it.</string>
 ```
 
-And set the deployment target to 12.0 or higher in `ios/Podfile`
-(`platform :ios, '12.0'`) and in Xcode under *Runner → General → Minimum
-Deployments*.
+And set the deployment target to 15.5 or higher in `ios/Podfile`
+(`platform :ios, '15.5'`) and in Xcode under *Runner → General → Minimum
+Deployments*. 15.5 is not a preference — it is the minimum `google_mlkit_commons`
+accepts, and `pod install` fails outright below it.
+
+Because `ios/` is regenerated rather than committed, these edits do not persist;
+redo them after any `flutter create`. The iOS CI workflow
+(`.github/workflows/ios-build.yml`) applies the same two changes automatically
+for the same reason — if you change the target, change it there too.
 
 ## Editing the drill library
 

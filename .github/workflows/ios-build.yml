@@ -36,6 +36,20 @@ jobs:
       - name: Generate iOS platform files
         run: flutter create --platforms=ios --project-name golf_swing_analyzer .
 
+      # ML Kit (google_mlkit_commons) requires iOS 15.5; the generated project
+      # targets 13.0. Patched here rather than committed because ios/ is
+      # regenerated on every run. Keep in sync with flutter_app/README.md.
+      - name: Set iOS deployment target
+        run: |
+          sed -i '' "s/^# platform :ios.*/platform :ios, '15.5'/" ios/Podfile
+          sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 15.5;/g" ios/Runner.xcodeproj/project.pbxproj
+          # A silently no-opping sed would resurface as a confusing pod install
+          # failure, so fail here instead if the SDK template ever changes.
+          grep -q "^platform :ios, '15.5'" ios/Podfile \
+            || { echo "::error::Podfile platform patch did not apply"; exit 1; }
+          grep -q "IPHONEOS_DEPLOYMENT_TARGET = 15.5;" ios/Runner.xcodeproj/project.pbxproj \
+            || { echo "::error::pbxproj deployment target patch did not apply"; exit 1; }
+
       - name: Install dependencies
         run: flutter pub get
 
