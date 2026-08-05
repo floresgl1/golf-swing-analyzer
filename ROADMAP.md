@@ -358,6 +358,23 @@ The `>=` comparisons elsewhere in `src/` are a different kind and are not counte
 - Test on both iOS and Android if possible
 - Address any ML Kit keypoint accuracy issues (may need threshold adjustments for mobile)
 
+**iOS compile gate (added 2026-08-04)** — `.github/workflows/ios-build.yml`
+builds iOS unsigned on a GitHub Actions `macos-latest` runner, so iOS
+compilation is verified from Windows without Apple hardware. The deployment
+target is **15.5**, the floor `google_mlkit_commons` requires; the workflow
+patches it in with `sed` after `flutter create` rather than committing a
+Podfile, because `ios/` is gitignored and regenerated on every run.
+
+**Known gap — the gate structurally cannot catch a missing
+`NSCameraUsageDescription`.** Because `ios/` is regenerated, CI builds a
+*default* Xcode project with a default `Info.plist`, and under the
+regenerate-everything convention that permission string has nowhere in the
+repo to live. The `camera` package hard-crashes on first access without it,
+so the failure mode is: green compile check, clean build, instant crash the
+moment a tester points it at a swing — past every automated gate, in front of
+a real user. Verify it by hand on the first running build. **A green CI run
+proves the code compiles, not that the app runs.**
+
 ---
 
 ## Future Feature Roadmap
