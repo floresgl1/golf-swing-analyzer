@@ -90,7 +90,9 @@ never been validated against a labelled corpus. See `ROADMAP.md`.
   on simulators/emulators reliably. Use a real Android phone or iPhone.
 - **Android**: `minSdkVersion 24` (ML Kit needs 21, ffmpeg needs 24, so 24 wins).
 - **iOS**: deployment target **15.5+** — the floor imposed by ML Kit
-  (`google_mlkit_commons`); anything lower fails `pod install`.
+  (`google_mlkit_commons`); anything lower fails `pod install`. Applied by
+  `tool/configure_ios.py`, which is the authoritative value; this line is a
+  summary of it.
 
 ## Building and running
 
@@ -141,22 +143,25 @@ android {
 }
 ```
 
-**iOS** — in `ios/Runner/Info.plist`, add inside the top-level `<dict>`:
+**iOS** — do not hand-edit anything under `ios/`. Run:
 
-```xml
-<key>NSCameraUsageDescription</key>
-<string>Record your golf swing so the app can analyze it.</string>
+```bash
+python3 tool/configure_ios.py     # after every `flutter create .`
 ```
 
-And set the deployment target to 15.5 or higher in `ios/Podfile`
-(`platform :ios, '15.5'`) and in Xcode under *Runner → General → Minimum
-Deployments*. 15.5 is not a preference — it is the minimum `google_mlkit_commons`
-accepts, and `pod install` fails outright below it.
+That sets `NSCameraUsageDescription` in `Runner/Info.plist` and raises the
+deployment target to 15.5 in both the Podfile and every Xcode build
+configuration. 15.5 is not a preference — it is the minimum
+`google_mlkit_commons` accepts, and `pod install` fails outright below it.
 
-Because `ios/` is regenerated rather than committed, these edits do not persist;
-redo them after any `flutter create`. The iOS CI workflow
-(`.github/workflows/ios-build.yml`) applies the same two changes automatically
-for the same reason — if you change the target, change it there too.
+The script exists because `ios/` is gitignored and regenerated, so a hand-edited
+`Info.plist` or Podfile survives on one machine and reaches nothing else — not a
+fresh clone, not CI. It is idempotent, and it exits non-zero rather than
+silently doing nothing, which matters because a missing camera description
+produces a build that compiles cleanly and crashes the moment the camera opens.
+
+The CI workflow (`.github/workflows/ios-build.yml`) runs the same script, so
+these values have one source. Change them in `tool/configure_ios.py`.
 
 ## Editing the drill library
 
