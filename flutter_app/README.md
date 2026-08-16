@@ -154,6 +154,14 @@ deployment target to 15.5 in both the Podfile and every Xcode build
 configuration. 15.5 is not a preference — it is the minimum
 `google_mlkit_commons` accepts, and `pod install` fails outright below it.
 
+**On Windows and Linux the Podfile half is skipped, by design.** `flutter
+create` only generates a Podfile on a host with a working Xcode, so off a Mac
+there is no Podfile to patch and the script says so loudly and exits 0 — the
+`Info.plist` and `project.pbxproj` patches still run. A tree generated on a Mac
+and copied to another host still has its Podfile patched; only a genuinely
+absent one is skipped. On a Mac (and on the CI runner) a missing Podfile stays
+a hard error, because there it means something is wrong with the tree.
+
 The script exists because `ios/` is gitignored and regenerated, so a hand-edited
 `Info.plist` or Podfile survives on one machine and reaches nothing else — not a
 fresh clone, not CI. It is idempotent, and it exits non-zero rather than
