@@ -351,7 +351,7 @@ The `>=` comparisons elsewhere in `src/` are a different kind and are not counte
 **Status**: Not started
 **Goal**: Validate the mobile experience end-to-end on a real device.
 
-- Run `flutter create .` to generate platform folders, add camera permissions per README
+- Run `flutter create .` to generate platform folders, then `python3 tool/configure_ios.py` (never hand-edit `ios/` — see below)
 - Record a real swing and run the full pipeline
 - Compare ML Kit pose quality against MediaPipe heavy model — numbers may shift
 - Profile frame extraction and analysis time — is the user waiting too long?
@@ -360,20 +360,62 @@ The `>=` comparisons elsewhere in `src/` are a different kind and are not counte
 
 **iOS compile gate (added 2026-08-04)** — `.github/workflows/ios-build.yml`
 builds iOS unsigned on a GitHub Actions `macos-latest` runner, so iOS
-compilation is verified from Windows without Apple hardware. The deployment
-target is **15.5**, the floor `google_mlkit_commons` requires; the workflow
-patches it in with `sed` after `flutter create` rather than committing a
-Podfile, because `ios/` is gitignored and regenerated on every run.
+compilation is verified from Windows without Apple hardware.
 
-**Known gap — the gate structurally cannot catch a missing
-`NSCameraUsageDescription`.** Because `ios/` is regenerated, CI builds a
-*default* Xcode project with a default `Info.plist`, and under the
-regenerate-everything convention that permission string has nowhere in the
-repo to live. The `camera` package hard-crashes on first access without it,
-so the failure mode is: green compile check, clean build, instant crash the
-moment a tester points it at a swing — past every automated gate, in front of
-a real user. Verify it by hand on the first running build. **A green CI run
-proves the code compiles, not that the app runs.**
+**`ios/` is gitignored and regenerated on every run, so nothing under it can
+be committed.** Every value the generated tree needs therefore lives in one
+post-generate patcher — `flutter_app/tool/configure_ios.py`, run between
+`flutter create` and `pod install`, landed 2026-08-09 (replacing the inline
+`sed`/`grep` steps). It owns the **15.5** deployment target (the floor
+`google_mlkit_commons` requires — `pod install` fails outright below it) in
+both `project.pbxproj` and the `Podfile`, and `NSCameraUsageDescription` in
+`Info.plist`. Adding an iOS-side value means extending that script; there is
+no other place to put it.
+
+**The design rule the script is built on: a patch that quietly does nothing
+produces a green build that crashes on device, so silence is never success.**
+Every patch re-reads its file from disk and fails the run unless the value
+actually landed. Two specifics worth not re-deriving:
+
+- **Idempotency is free for the plist half and earned for the pbxproj half.**
+  `plist[KEY] = VALUE` is an assignment into a keyed structure the parser
+  already normalized — same result on the first run and the fifth, no
+  already-present branch, no duplicate key possible. `re.subn()` gets no such
+  guarantee: it rewrites bytes with no model of the file, so idempotency holds
+  only because the substitution pattern is written to *exclude its own
+  output* (it matches a bare numeric version, and emits `15.5`; a second pass
+  finds `15.5` and rewrites it to itself). That is a property of the pattern,
+  not of the method — widen it to accept what it emits and reruns start
+  stacking. The Podfile pattern buys the same property differently: it matches
+  the line commented, active, at any version, so every state converges on one
+  active line.
+- **The check must not share the operation's blind spots.** Counting uses a
+  *wider* pattern than substituting (`([^;]+);` vs `[\d.]+;`), so a value the
+  script cannot rewrite — a quoted `"13.0"`, an `$(inherited)` — surfaces as
+  stale instead of disappearing from numerator and denominator at once. This
+  is not hypothetical caution: the shipped `grep -q` guard it replaced passed
+  with 1 of 3 build configurations still on 13.0, because `grep -q` returns 0
+  on the first match.
+
+**Narrowed gap.** CI now proves `NSCameraUsageDescription` is present in the
+`Info.plist` it builds. What it still cannot prove is that the app *runs* —
+a permission string can be present and wrong, and no compile check exercises
+the camera at all. Verify by hand on the first running build. **A green CI
+run proves the code compiles, not that the app runs.**
+
+**Device path unblocked (2026-08-16).** Apple Developer Program enrollment is
+complete ($99/yr), which makes the user's own iPhone a stable TestFlight
+target and takes MacInCloud off the table. The deployment path is the existing
+Actions pipeline → sign + upload → TestFlight → phone; no Mac at the desk.
+
+**Increment two — signing, not yet written.** The same patcher grows a signing
+block (App Store Connect API key, App ID `io.github.floresgl1.golf_swing_analyzer`,
+distribution cert/profile) and the workflow's `--no-codesign` build becomes a
+signed archive + upload. Deliberately **coupled structurally, decoupled
+temporally**: it belongs in `configure_ios.py` because it patches the same
+regenerated tree for the same reason, but it lands as its own verified commit
+so a signing failure cannot be confused with a camera-fix failure. The camera
+half is landed and green (run on `main` @ `067cab2`); signing is the next step.
 
 ---
 
