@@ -7,14 +7,24 @@ live in a committed file. This script is where they live instead.
 
 Applies:
   - IPHONEOS_DEPLOYMENT_TARGET floor (google_mlkit_commons requires 15.5;
-    `pod install` fails outright below it)
+    `pod install` fails outright below it) — in project.pbxproj, and in the
+    Podfile when one exists
   - NSCameraUsageDescription (the camera package hard-crashes on first access
     without it — a failure that no compile check can catch)
 
-Both patches are idempotent, and neither returns without re-reading the file
-from disk and confirming the value actually landed. A patch that quietly does
+Every patch is idempotent, and none returns without re-reading the file from
+disk and confirming the value actually landed. A patch that quietly does
 nothing is the specific hazard here: it produces a green build that crashes on
 device, so silence is never treated as success.
+
+**The Podfile is conditional, and only its absence is.** `flutter create`
+generates a Podfile only on a host with a working Xcode — see
+`xcode_generates_podfiles()` — so on Windows or Linux there is nothing to
+patch and demanding one would fail the documented local workflow by design. If
+a Podfile is present it is patched regardless of host; if it is absent on a
+host that could not have produced one, that is reported and skipped; if it is
+absent on a host that *should* have produced one, that is still fatal. The
+guarantee is preserved exactly where the build happens.
 
 Usage:
     python tool/configure_ios.py [ios_dir]
@@ -27,6 +37,7 @@ from __future__ import annotations
 
 import plistlib
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -56,8 +67,51 @@ _SUBSTITUTE_PLATFORM = re.compile(r"^[ \t]*#?[ \t]*platform :ios.*$", re.MULTILI
 _COUNT_PLATFORM = re.compile(r"^[ \t]*platform :ios(.*)$", re.MULTILINE)
 
 
+# Mirrors Flutter's own Xcode probe rather than approximating it. From the
+# pinned SDK, `flutter_tools/lib/src/ios/xcodeproj.dart`:
+#
+#     if (!_platform.isMacOS || !_fileSystem.file('/usr/bin/xcodebuild').existsSync()) {
+#     ...
+#     bool get isInstalled => version != null;   // version parsed from `xcodebuild -version`
+#
+# and `macos/cocoapods.dart` returns early from `setupPodfile()` when that is
+# false. `shutil.which("xcodebuild")` would NOT be equivalent: on a Mac with
+# only the Command Line Tools installed the shim at /usr/bin/xcodebuild exists
+# and is on PATH, but `xcodebuild -version` fails, so Flutter reads Xcode as
+# absent and skips Podfile generation. Predicting Flutter's behaviour requires
+# running the same check Flutter runs.
+_XCODEBUILD = Path("/usr/bin/xcodebuild")
+_XCODE_VERSION = re.compile(r"Xcode ([0-9.]+).*Build version (\w+)", re.DOTALL)
+
+
 class PatchError(RuntimeError):
     """A patch did not land. Never allowed to pass as success."""
+
+
+def xcode_generates_podfiles() -> bool:
+    """True when this host's Flutter would have generated a Podfile.
+
+    Answers one narrow question — is a missing Podfile expected here, or is it
+    evidence of a broken tree? — so it is deliberately conservative: anything
+    unexpected reads as "no Xcode", which downgrades a missing Podfile to a
+    reported skip rather than inventing a failure on a host that was never
+    going to have one.
+    """
+    if sys.platform != "darwin" or not _XCODEBUILD.is_file():
+        return False
+
+    try:
+        result = subprocess.run(
+            [str(_XCODEBUILD), "-version"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+    return result.returncode == 0 and _XCODE_VERSION.search(result.stdout) is not None
 
 
 def patch_info_plist(plist_path: Path) -> None:
@@ -178,7 +232,7 @@ def main(argv: list[str]) -> int:
     pbxproj_path = ios_dir / "Runner.xcodeproj" / "project.pbxproj"
     podfile_path = ios_dir / "Podfile"
 
-    for path in (plist_path, pbxproj_path, podfile_path):
+    for path in (plist_path, pbxproj_path):
         if not path.is_file():
             print(
                 f"error: {path} is missing. `flutter create` should have "
@@ -187,17 +241,51 @@ def main(argv: list[str]) -> int:
             )
             return 1
 
+    # PRESENCE decides whether the Podfile is patched; only its ABSENCE is
+    # judged against the host. A tree generated on a Mac and copied to Windows
+    # still carries a Podfile, and it is still patched here — gating the patch
+    # itself on the host would skip a file that is sitting right there.
+    podfile_present = podfile_path.is_file()
+
+    if not podfile_present:
+        if xcode_generates_podfiles():
+            print(
+                f"error: {podfile_path} is missing, but this host has a working "
+                "Xcode, so `flutter create` did generate one and something "
+                "removed it. Refusing to configure a tree whose build would "
+                "fall back to CocoaPods' inferred deployment target.",
+                file=sys.stderr,
+            )
+            return 1
+
+        print(
+            f"warning: {podfile_path} does not exist, and this host has no "
+            "working Xcode, so `flutter create` never generated one. Skipping "
+            "the Podfile patch. THIS TREE IS NOT READY TO BUILD — the Podfile "
+            "patch still has to run on the macOS host that builds it.",
+            file=sys.stderr,
+        )
+
     try:
         patch_info_plist(plist_path)
         patch_deployment_target(pbxproj_path)
-        patch_podfile(podfile_path)
+        if podfile_present:
+            patch_podfile(podfile_path)
     except (PatchError, plistlib.InvalidFileException, ValueError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
+    # The summary names the Podfile either way. A run that skipped it must not
+    # read as a fully configured tree — that is the same silence-as-success
+    # hazard this script exists to prevent, one level up.
+    podfile_state = (
+        "and in the Podfile"
+        if podfile_present
+        else "-- PODFILE NOT PATCHED, it does not exist on this host"
+    )
     print(
         f"ios: {CAMERA_KEY} set; deployment target {DEPLOYMENT_TARGET} "
-        f"in every build configuration and in the Podfile"
+        f"in every build configuration {podfile_state}"
     )
     return 0
 

@@ -397,6 +397,31 @@ actually landed. Two specifics worth not re-deriving:
   with 1 of 3 build configurations still on 13.0, because `grep -q` returns 0
   on the first match.
 
+**The Podfile patch is conditional, and only its absence is (2026-08-16).**
+`flutter create` generates a Podfile only when the host has a working Xcode —
+`flutter_tools/lib/src/macos/cocoapods.dart` returns early from `setupPodfile()`
+otherwise. Measured, not assumed: `flutter create --platforms=ios` on Linux with
+the pinned SDK emits `Flutter/ Runner/ Runner.xcodeproj/ Runner.xcworkspace/
+RunnerTests/` and **no Podfile**, and `flutter pub get` does not add one. So the
+script's original unconditional Podfile requirement made its own documented
+local workflow (`README.md`, and its docstring's "locally or in CI") exit 1 on
+every Windows run. It was never caught because it had only been exercised
+against a *copy of a Mac-generated tree*, which carries a Podfile.
+
+The gate mirrors Flutter's own probe rather than approximating it: macOS **and**
+`/usr/bin/xcodebuild` exists **and** `xcodebuild -version` parses. `which
+xcodebuild` would be wrong — on a Command-Line-Tools-only Mac the shim is on
+PATH but `-version` fails, and Flutter reads Xcode as absent. Predicting
+Flutter's behaviour means running Flutter's check.
+
+Note which way the condition points: **presence** decides whether the Podfile is
+patched, **absence** is what gets judged against the host. A Mac-generated tree
+copied to Windows still gets its Podfile patched. A missing Podfile on a host
+with Xcode — CI — is still fatal, so the guarantee is untouched where the build
+happens. And a skipped run still names the Podfile as unpatched in its summary
+line: a partial run must never read as a configured tree, which is the same
+silence-as-success hazard one level up.
+
 **Narrowed gap.** CI now proves `NSCameraUsageDescription` is present in the
 `Info.plist` it builds. What it still cannot prove is that the app *runs* —
 a permission string can be present and wrong, and no compile check exercises
@@ -409,13 +434,48 @@ target and takes MacInCloud off the table. The deployment path is the existing
 Actions pipeline → sign + upload → TestFlight → phone; no Mac at the desk.
 
 **Increment two — signing, not yet written.** The same patcher grows a signing
-block (App Store Connect API key, App ID `io.github.floresgl1.golf_swing_analyzer`,
-distribution cert/profile) and the workflow's `--no-codesign` build becomes a
-signed archive + upload. Deliberately **coupled structurally, decoupled
-temporally**: it belongs in `configure_ios.py` because it patches the same
-regenerated tree for the same reason, but it lands as its own verified commit
-so a signing failure cannot be confused with a camera-fix failure. The camera
-half is landed and green (run on `main` @ `067cab2`); signing is the next step.
+block (App Store Connect API key, distribution cert/profile) and the workflow's
+`--no-codesign` build becomes a signed archive + upload. Deliberately **coupled
+structurally, decoupled temporally**: it belongs in `configure_ios.py` because
+it patches the same regenerated tree for the same reason, but it lands as its
+own verified commit so a signing failure cannot be confused with a camera-fix
+failure.
+
+**The rule that decides what goes in which increment: an increment is bounded
+by what its verification can actually prove.** Increment one's property was
+"provable locally before pushing"; signing's is "only provable on the runner."
+That is why the Podfile gate above landed on its own, ahead of signing (locally
+provable, and a prerequisite for developing signing on a non-Mac host), and why
+these belong to increment two:
+
+- **`PRODUCT_BUNDLE_IDENTIFIER` rewrite.** Measured against the pinned SDK: the
+  generated tree emits `com.example.golfSwingAnalyzer` — camelCased, not
+  flattened — in **six** places, as **two** shapes (3 × app, 3 ×
+  `…​.RunnerTests`, the test target's being a derived suffix). The post-condition
+  must assert 3 and 3 *separately*; a single count of 6 would pass even if the
+  two identifiers collapsed into one, which is an invalid project. Register
+  `io.github.floresgl1.golfSwingAnalyzer` — **not** the underscore form: Apple
+  specifies bundle IDs as alphanumerics, hyphens and periods, and an App ID
+  cannot be renamed after creation. Unverifiable until something signs against
+  a profile expecting it, hence increment two.
+- **`ITSAppUsesNonExemptEncryption`.** Structurally it is a plist key like the
+  camera one; temporally it is TestFlight's. Its presence is trivially
+  assertable and that assertion proves nothing about its purpose — there is no
+  upload for it to unblock yet — so landing it in increment one would let it be
+  marked verified on evidence that does not bear on it. It is also a compliance
+  *declaration*, not a config toggle, and belongs next to the submission work
+  that motivates it rather than inside a camera-permission commit.
+- **Signing keys need a different post-condition than the deployment target.**
+  The generated tree carries `CODE_SIGN_STYLE = Automatic` ×3 and **no**
+  `DEVELOPMENT_TEAM`, `PROVISIONING_PROFILE_SPECIFIER`, or `CODE_SIGN_IDENTITY`.
+  So manual signing flips one existing key and *inserts* three the template
+  never emits — and the substitute-narrow/count-wide asymmetry does not
+  transfer, because you cannot count what was never there.
+- **Build numbering.** `pubspec.yaml` is at `0.1.0+1` and TestFlight
+  permanently rejects a repeated build number; derive it from
+  `github.run_number` rather than committing bumps.
+
+The camera half is landed and green (run on `main` @ `067cab2`).
 
 ---
 
