@@ -615,6 +615,56 @@ The camera half is landed and green (run on `main` @ `067cab2`).
 - **Sharing**: export swing reports as images or PDFs for sharing with an instructor
 - **Onboarding**: guide for recording angle, distance, lighting for best results
 
+### Product voice — the app reads like it was generated, not written (2026-08-17)
+
+Raised after seeing the shipped screens on device. The app is *accurate* and
+*honest* and still reads like documentation. It has no voice, and a golfer can
+tell. This is a real product problem, not polish.
+
+**The tells, from the shipped Record and Report screens:**
+
+- **Internal vocabulary leaks into user copy.** `NOT SEEN`, `POSSIBLE`,
+  `— informational`, `beta reference 0.13`, `0.44 torso-lengths`. These are
+  classifier states and calibration terms. No golfer thinks in torso-lengths,
+  and "NOT SEEN" is what a program says, not a person.
+- **Hedging stacked into one long sentence.** The beta banner is a 45-word
+  single sentence carrying four separate qualifications. Everything in it is
+  true. Nobody reads it.
+- **Redundancy from parallel construction.** "Possible head sway" sitting next
+  to a `POSSIBLE` badge. Every card built to the identical shape whether or not
+  the content warrants it.
+- **Explaining where it should be saying.** The banner explains the entire
+  epistemic situation instead of saying the one thing that matters: these
+  numbers are early, don't train on them yet.
+- **Labels that describe the data model, not the user's intent.** "This swing
+  is: Normal / Exaggerated", "Working on: Full swing check". Both are fields;
+  neither is a question a golfer would ask themselves.
+
+**The existing counter-example is in this repo.** `data/drills.json` reads
+well — *"Do 10 reps feeling the head stay 'quiet' over the ball"* sounds like a
+coach, because it was written for a human audience. The drill text is the proof
+the project can do this; the surrounding chrome is where it slips. Match the
+drills' register, don't invent a new one.
+
+**THE CONSTRAINT THAT MAKES THIS HARD — read before touching any copy.** The
+hedging is **load-bearing**. The beta banner, the `beta reference` values, and
+the deliberate softness of "possible" all exist because the thresholds are
+uncalibrated (see P0) and the app must not imply otherwise. A rewrite that
+makes the copy punchy by deleting the caveats converts an honest product into a
+confident wrong one, and it will look like an improvement in review.
+
+Rewrite the **voice**, preserve the **epistemics**. Concretely: every claim the
+current copy hedges must still be hedged afterwards, in fewer and better words.
+"Early numbers — we haven't checked these against real swings yet" carries the
+same meaning as the 45-word banner and is likelier to be read. If a proposed
+line drops a qualification rather than compressing it, reject it.
+
+**Sequencing.** Cheap to do, expensive to undo badly, and the fault vocabulary
+will change anyway when P0.2 recalibrates and the verdict wording follows the
+thresholds. Worth doing *after* P0.2 so the copy is written once against final
+semantics — but the Record screen and the beta banner touch no thresholds and
+can move earlier if the app goes in front of anyone.
+
 ### Practice Focus (persistent) — makes the existing focus-fault legible; fixes a real bug
 
 **Gating (read first):** buildable only *after* **P0.1** supplies the measurement noise floor (staleness has no valid threshold without it) and **P0.2** establishes the measurement-version boundary (trends can't cross it). Do NOT pick this up as a UI task and build the mechanism without the calibration — that reproduces exactly the "looks calibrated, isn't" failure this design exists to avoid.
