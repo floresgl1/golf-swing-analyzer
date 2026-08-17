@@ -418,6 +418,44 @@ beta banner rendered and hedged accurately. The banner is not a substitute for
 this gate, though: it qualifies *precision*, and the claim needed here is about
 the *input*.
 
+#### P1.2 — Corpus export was broken on iOS, blocking P0.1 (fixed 2026-08-17)
+
+**This was a P0.1 blocker, not a UI annoyance.** Export is the *only* way swings
+leave the device — no backend, no account, by design — so while it failed, the
+corpus P0.1 depends on could not be collected at all. Found the first time
+anyone pressed the button on a real phone:
+
+```
+Export failed: PlatformException(error, sharePositionOrigin: argument must be
+set, {{0, 0}, {0, 0}} must be non-zero and within coordinate space of source
+view: {{0, 0}, {430, 932}})
+```
+
+`UIActivityViewController` is a popover on iPad and must be anchored, and
+share_plus enforces that on **every** iOS device: a null or zero-sized origin
+fails the entire export. `CorpusExporter.share()` had always accepted a
+`Rect? sharePositionOrigin` — the plumbing was there from the start — and
+`profile_screen.dart` simply never passed one. The parameter existed, was
+optional, and defaulted to the one value iOS rejects.
+
+Fixed by anchoring to the export button via a `GlobalKey`, which is also the
+correct iPad behaviour: the popover should point at the control that was tapped.
+`shareOriginOrFallback` guarantees the result is never degenerate, since both
+`null` and `Rect.zero` are rejected.
+
+**Why no test caught it and what now does.** The failure lives in the gap
+between an optional Dart parameter and a platform requirement — nothing in the
+Dart type system objects to omitting it, and no unit test exercises UIKit. The
+boundary rule was therefore extracted into a pure function so it *is* testable,
+and verified non-vacuous by mutation: making the fallback return `Rect.zero`
+turns the test red, and reverting the caller to `share()` trips `flutter
+analyze` with an unused `_shareOrigin`. Neither is a substitute for pressing the
+button on a phone.
+
+**The transferable lesson: an optional parameter that a platform requires is a
+required parameter with a bug in it.** Worth a look wherever else the app hands
+something to a plugin with a nullable positional or named argument.
+
 **iOS compile gate (added 2026-08-04)** — `.github/workflows/ios-build.yml`
 builds iOS unsigned on a GitHub Actions `macos-latest` runner, so iOS
 compilation is verified from Windows without Apple hardware.
