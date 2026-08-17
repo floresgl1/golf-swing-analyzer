@@ -49,3 +49,18 @@ flutter_app/linux/
 flutter_app/macos/
 flutter_app/windows/
 flutter_app/web/
+
+# iOS signing material — generated locally, never committed. A distribution
+# private key in git history is expensive to unwind: the certificate has to be
+# revoked and reissued against one of only ~3 distribution slots, and history
+# rewriting does not un-publish it. These live on your machine and in GitHub
+# Actions secrets, nowhere else.
+*.p12
+*.mobileprovision
+*.cer
+*.p8
+*.csr
+*.key
+*.pem
+*.b64
+openssl-min.cnf
