@@ -456,6 +456,33 @@ button on a phone.
 required parameter with a bug in it.** Worth a look wherever else the app hands
 something to a plugin with a nullable positional or named argument.
 
+**It took four builds, and two more failures behind it (2026-08-17).** The
+anchor fix above was necessary and not sufficient:
+
+1. **Containment, not just non-emptiness.** `CGRectContainsRect(controller.view.frame, origin)`
+   is a second condition, and a button inside a scrolled list can have a
+   non-empty rect that still extends past the screen edge. The origin is now
+   intersected with the screen, making containment true by construction.
+2. **iOS silently dropped the `.jsonl` attachment.** With the share sheet
+   finally opening, `participant.json` transferred every time and
+   `swing_history.jsonl` never did — twice, with no error, while the sheet's
+   own text said "5 swings". iOS classifies attachments by type and `.jsonl`
+   has no registered one, so the exporter now declares `text/plain` for it.
+
+**Three of those four builds were spent on a phone running none of the code.**
+"Released" and "installed" are different claims, and the message format was
+what eventually proved it — the diagnostic build printed extra lines the device
+never showed. **Do not debug a device report without first establishing which
+build produced it.** A visible build number in the app would have saved most of
+this.
+
+**Consequence: the share sheet is no longer the only way out.** The patcher now
+sets `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace`, so the
+corpus appears under Files → On My iPhone → the app. That path depends on
+nothing but the filesystem. The share sheet remains, but a corpus P0.1 cannot
+proceed without should not have a single route off the device, and that route
+should not be the one with four builds of platform quirks behind it.
+
 **iOS compile gate (added 2026-08-04)** — `.github/workflows/ios-build.yml`
 builds iOS unsigned on a GitHub Actions `macos-latest` runner, so iOS
 compilation is verified from Windows without Apple hardware.
