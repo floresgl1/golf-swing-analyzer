@@ -35,6 +35,7 @@ logic can be exercised against a copied tree without touching a real one.
 
 from __future__ import annotations
 
+import os
 import plistlib
 import re
 import subprocess
@@ -44,6 +45,27 @@ from pathlib import Path
 DEPLOYMENT_TARGET = "15.5"
 CAMERA_KEY = "NSCameraUsageDescription"
 CAMERA_USAGE_DESCRIPTION = "Record your golf swing so the app can analyze it."
+
+# Measured against the pinned SDK, not predicted: `flutter create --project-name
+# golf_swing_analyzer` camelCases the name and emits com.example.golfSwingAnalyzer.
+# Only the org segment differs from what we want, but the rewrite replaces the
+# whole identifier so a template change to the default org cannot slip through.
+# Underscores are deliberately absent — Apple specifies bundle IDs as
+# alphanumerics, hyphens and periods, and an App ID cannot be renamed once made.
+BUNDLE_ID = "io.github.floresgl1.golfSwingAnalyzer"
+
+# TestFlight asks an export-compliance question on every build unless the answer
+# is declared here. False is a statement that the app uses no non-exempt
+# encryption: it ships no custom cryptography, and HTTPS/ML Kit are exempt.
+ENCRYPTION_KEY = "ITSAppUsesNonExemptEncryption"
+
+# Signing is configured from the environment because the values are account
+# secrets that must not live in the repo. Absent = build unsigned, which is what
+# local runs and the compile-only CI job want.
+TEAM_ENV = "IOS_DEVELOPMENT_TEAM"
+PROFILE_ENV = "IOS_PROVISIONING_PROFILE_SPECIFIER"
+IDENTITY_ENV = "IOS_CODE_SIGN_IDENTITY"
+DEFAULT_IDENTITY = "Apple Distribution"
 
 # The pbxproj is NeXTSTEP ASCII plist, not XML, so plistlib cannot read it
 # (it supports FMT_XML and FMT_BINARY only) and a text patch is the only
@@ -65,6 +87,32 @@ _COUNT_TARGET = re.compile(r"IPHONEOS_DEPLOYMENT_TARGET = ([^;]+);")
 # indented line cannot slip past the check.
 _SUBSTITUTE_PLATFORM = re.compile(r"^[ \t]*#?[ \t]*platform :ios.*$", re.MULTILINE)
 _COUNT_PLATFORM = re.compile(r"^[ \t]*platform :ios(.*)$", re.MULTILINE)
+
+# One pattern for both bundle-identifier shapes, rewritten in a single pass by a
+# callable. The generated tree carries the app id three times and a DERIVED
+# `<app id>.RunnerTests` three more; two sequential substitutions cannot express
+# that without the second undoing the first, and a single naive substitution
+# gets the right answer only by luck of substring ordering. The callable makes
+# the derivation explicit: read the suffix off the current value, keep it.
+#
+# Matching any identifier rather than only `com.example.*` is what makes reruns
+# converge — the pattern accepts its own output and maps it to itself.
+_ANY_BUNDLE_ID = re.compile(r"PRODUCT_BUNDLE_IDENTIFIER = ([\w.\-]+);")
+_TESTS_SUFFIX = ".RunnerTests"
+
+# Signing settings go in the project-level xcconfig rather than the pbxproj.
+# Measured: the Runner app target carries NO signing settings in any build
+# configuration (the three `CODE_SIGN_STYLE = Automatic` in the generated
+# project belong to RunnerTests, which `flutter build ipa` never archives). With
+# nothing at target level to override it, project xcconfig applies cleanly — so
+# this is a whole-block write to a nearly empty file instead of surgical
+# insertion into a NeXTSTEP plist the parser cannot read.
+_SIGNING_BEGIN = "# >>> configure_ios.py managed signing block — do not edit by hand"
+_SIGNING_END = "# <<< configure_ios.py managed signing block"
+_SIGNING_BLOCK = re.compile(
+    re.escape(_SIGNING_BEGIN) + r".*?" + re.escape(_SIGNING_END) + r"\n?",
+    re.DOTALL,
+)
 
 
 # Mirrors Flutter's own Xcode probe rather than approximating it. From the
@@ -129,7 +177,13 @@ def patch_info_plist(plist_path: Path) -> None:
 
     # Assignment rather than insertion: identical on the first run and the
     # fifth, with no already-present branch and no chance of a duplicate key.
-    plist[CAMERA_KEY] = CAMERA_USAGE_DESCRIPTION
+    # This is the one patch that gets idempotency from the data structure
+    # itself rather than from a carefully written pattern.
+    wanted = {
+        CAMERA_KEY: CAMERA_USAGE_DESCRIPTION,
+        ENCRYPTION_KEY: False,
+    }
+    plist.update(wanted)
 
     with plist_path.open("wb") as handle:
         plistlib.dump(plist, handle)
@@ -137,12 +191,113 @@ def patch_info_plist(plist_path: Path) -> None:
     with plist_path.open("rb") as handle:
         written = plistlib.load(handle)
 
-    actual = written.get(CAMERA_KEY)
-    if actual != CAMERA_USAGE_DESCRIPTION:
+    for key, value in wanted.items():
+        actual = written.get(key)
+        # `is not` on the bool would be right but reads as a typo; compare by
+        # type and value so False never matches a 0 that drifted in.
+        if type(actual) is not type(value) or actual != value:
+            raise PatchError(
+                f"{plist_path}: {key} reads {actual!r} after writing, "
+                f"expected {value!r}."
+            )
+
+
+def patch_bundle_identifier(pbxproj_path: Path) -> tuple[int, int]:
+    """Point every target at our bundle id, keeping the test suffix derived."""
+    tests_id = f"{BUNDLE_ID}{_TESTS_SUFFIX}"
+
+    def rewrite(match: re.Match[str]) -> str:
+        suffix = _TESTS_SUFFIX if match.group(1).endswith(_TESTS_SUFFIX) else ""
+        return f"PRODUCT_BUNDLE_IDENTIFIER = {BUNDLE_ID}{suffix};"
+
+    original = pbxproj_path.read_text(encoding="utf-8")
+    patched, _ = _ANY_BUNDLE_ID.subn(rewrite, original)
+    if patched != original:
+        pbxproj_path.write_text(patched, encoding="utf-8")
+
+    values = _ANY_BUNDLE_ID.findall(pbxproj_path.read_text(encoding="utf-8"))
+    if not values:
         raise PatchError(
-            f"{plist_path}: {CAMERA_KEY} reads {actual!r} after writing, "
-            f"expected {CAMERA_USAGE_DESCRIPTION!r}."
+            f"{pbxproj_path}: no PRODUCT_BUNDLE_IDENTIFIER found at all. A "
+            "generated project always carries one per build configuration, so "
+            "the pattern no longer matches this project format."
         )
+
+    app_count = values.count(BUNDLE_ID)
+    tests_count = values.count(tests_id)
+
+    unexpected = sorted(set(values) - {BUNDLE_ID, tests_id})
+    if unexpected:
+        raise PatchError(
+            f"{pbxproj_path}: {len(values) - app_count - tests_count} of "
+            f"{len(values)} configurations still read {', '.join(unexpected)}."
+        )
+
+    # The two shapes are counted separately on purpose. A single total would
+    # pass if they had collapsed into one identifier — which builds a project
+    # whose app and test bundles claim the same id, and is invalid. Requiring
+    # both to be non-empty catches that; requiring an exact 3/3 would instead
+    # false-alarm the day the template adds a build configuration.
+    if not app_count or not tests_count:
+        raise PatchError(
+            f"{pbxproj_path}: expected both an app identifier and a "
+            f"{_TESTS_SUFFIX} one, got app={app_count} tests={tests_count}. "
+            "The two targets must not share a bundle identifier."
+        )
+
+    return app_count, tests_count
+
+
+def patch_signing(xcconfig_path: Path, team: str, profile: str, identity: str) -> None:
+    """Write the manual-signing block into the release xcconfig, then prove it."""
+    block = "\n".join(
+        [
+            _SIGNING_BEGIN,
+            "CODE_SIGN_STYLE = Manual",
+            f"DEVELOPMENT_TEAM = {team}",
+            f"PROVISIONING_PROFILE_SPECIFIER = {profile}",
+            f"CODE_SIGN_IDENTITY = {identity}",
+            _SIGNING_END,
+        ]
+    )
+
+    original = xcconfig_path.read_text(encoding="utf-8")
+
+    # Replacing a delimited block is what makes this idempotent: the second run
+    # overwrites the first run's output rather than appending beside it. An
+    # append-if-missing would stack a fresh block on every rerun, and xcconfig
+    # takes the LAST assignment — so stale values would win silently.
+    if _SIGNING_BLOCK.search(original):
+        patched = _SIGNING_BLOCK.sub(block + "\n", original)
+    else:
+        patched = original.rstrip("\n") + "\n\n" + block + "\n"
+
+    if patched != original:
+        xcconfig_path.write_text(patched, encoding="utf-8")
+
+    written = xcconfig_path.read_text(encoding="utf-8")
+    blocks = _SIGNING_BLOCK.findall(written)
+    if len(blocks) != 1:
+        raise PatchError(
+            f"{xcconfig_path}: found {len(blocks)} managed signing blocks after "
+            "writing, expected exactly 1."
+        )
+
+    expected = {
+        "CODE_SIGN_STYLE": "Manual",
+        "DEVELOPMENT_TEAM": team,
+        "PROVISIONING_PROFILE_SPECIFIER": profile,
+        "CODE_SIGN_IDENTITY": identity,
+    }
+    for key, value in expected.items():
+        # Anchored to the whole file, not the block, so an assignment placed
+        # AFTER the block — which xcconfig would let win — fails the check.
+        matches = re.findall(rf"^{re.escape(key)} = (.*)$", written, re.MULTILINE)
+        if matches[-1:] != [value]:
+            raise PatchError(
+                f"{xcconfig_path}: {key} resolves to {matches[-1:] or ['nothing']} "
+                f"instead of {value!r}. xcconfig takes the last assignment."
+            )
 
 
 def patch_deployment_target(pbxproj_path: Path) -> None:
@@ -231,6 +386,7 @@ def main(argv: list[str]) -> int:
     plist_path = ios_dir / "Runner" / "Info.plist"
     pbxproj_path = ios_dir / "Runner.xcodeproj" / "project.pbxproj"
     podfile_path = ios_dir / "Podfile"
+    xcconfig_path = ios_dir / "Flutter" / "Release.xcconfig"
 
     for path in (plist_path, pbxproj_path):
         if not path.is_file():
@@ -266,11 +422,41 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
 
+    # Signing is opt-in via the environment. All-or-nothing on purpose: a run
+    # with a team but no profile would produce a project that looks configured
+    # for manual signing and cannot sign, which fails deep inside xcodebuild
+    # with a message that does not name the cause.
+    team = os.environ.get(TEAM_ENV, "").strip()
+    profile = os.environ.get(PROFILE_ENV, "").strip()
+    identity = os.environ.get(IDENTITY_ENV, "").strip() or DEFAULT_IDENTITY
+    sign = bool(team and profile)
+
+    if (team or profile) and not sign:
+        missing = TEAM_ENV if not team else PROFILE_ENV
+        print(
+            f"error: {missing} is unset but the other signing variable is set. "
+            "Configure both or neither — a half-configured signing block "
+            "cannot sign and fails obscurely inside xcodebuild.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if sign and not xcconfig_path.is_file():
+        print(
+            f"error: {xcconfig_path} is missing, so there is nowhere to put the "
+            "signing settings. `flutter create` always produces it.",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         patch_info_plist(plist_path)
         patch_deployment_target(pbxproj_path)
+        app_count, tests_count = patch_bundle_identifier(pbxproj_path)
         if podfile_present:
             patch_podfile(podfile_path)
+        if sign:
+            patch_signing(xcconfig_path, team, profile, identity)
     except (PatchError, plistlib.InvalidFileException, ValueError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -284,8 +470,21 @@ def main(argv: list[str]) -> int:
         else "-- PODFILE NOT PATCHED, it does not exist on this host"
     )
     print(
-        f"ios: {CAMERA_KEY} set; deployment target {DEPLOYMENT_TARGET} "
-        f"in every build configuration {podfile_state}"
+        f"ios: {CAMERA_KEY} set; {ENCRYPTION_KEY}=false; "
+        f"deployment target {DEPLOYMENT_TARGET} in every build configuration "
+        f"{podfile_state}"
+    )
+    print(
+        f"ios: bundle id {BUNDLE_ID} "
+        f"({app_count} app / {tests_count} test configurations)"
+    )
+    # Named either way, for the same reason the Podfile is: an unsigned run must
+    # not read as a signed one.
+    print(
+        f"ios: manual signing configured for team {team}, profile {profile!r}"
+        if sign
+        else f"ios: NOT SIGNED -- {TEAM_ENV}/{PROFILE_ENV} unset, build will be "
+        "unsigned"
     )
     return 0
 
