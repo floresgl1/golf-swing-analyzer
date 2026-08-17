@@ -49,3 +49,6 @@ flutter_app/linux/
 flutter_app/macos/
 flutter_app/windows/
 flutter_app/web/
+
+ios_dist.csr
+ios_dist.key
