@@ -164,15 +164,46 @@ jobs:
           # altool discovers the key by name in this directory; there is no
           # flag to pass the key material inline.
           mkdir -p "$HOME/.appstoreconnect/private_keys"
-          echo "$ASC_PRIVATE_KEY" | base64 --decode \
-            > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+
+          # Accept the secret either base64-encoded or as raw PEM. A .p8 pasted
+          # straight from Apple's download is already text, and its body is
+          # itself valid base64 — so blindly decoding it yields plausible
+          # garbage rather than an error, and altool reports the result only as
+          # "The file couldn't be opened because it isn't in the correct
+          # format. (259)", naming neither the file nor the reason.
+          if printf '%s' "$ASC_PRIVATE_KEY" | grep -q -- '-----BEGIN'; then
+            echo "Key secret looks like raw PEM; writing it through unchanged."
+            printf '%s\n' "$ASC_PRIVATE_KEY" > "$KEY_PATH"
+          else
+            echo "Key secret looks base64-encoded; decoding."
+            printf '%s' "$ASC_PRIVATE_KEY" | base64 --decode > "$KEY_PATH"
+          fi
+
+          # Prove the key parses as PEM before altool sees it. Without this the
+          # only symptom is altool's error above, which is indistinguishable
+          # from a malformed IPA. Nothing here prints key material: on failure
+          # it reports the size and the first line's shape, not its contents.
+          if ! head -n 1 "$KEY_PATH" | grep -q -- '-----BEGIN .*PRIVATE KEY-----'; then
+            echo "::error::$KEY_PATH is not a PEM private key ($(wc -c < "$KEY_PATH" | tr -d ' ') bytes). APP_STORE_CONNECT_PRIVATE_KEY must hold the AuthKey_*.p8 contents, either raw or base64-encoded."
+            exit 1
+          fi
+          echo "API key OK ($(wc -c < "$KEY_PATH" | tr -d ' ') bytes, PEM header present)."
 
           IPA="$(find build/ios/ipa -name '*.ipa' -print -quit)"
           if [ -z "$IPA" ]; then
             echo "::error::No .ipa produced under build/ios/ipa"
             exit 1
           fi
-          echo "Uploading $IPA"
+
+          # An IPA is a zip. Testing it here separates "the archive is corrupt"
+          # from "the key is corrupt" — altool reports both with the same
+          # message, which is what made the first failure ambiguous.
+          if ! unzip -qt "$IPA" > /dev/null 2>&1; then
+            echo "::error::$IPA is not a readable zip archive."
+            exit 1
+          fi
+          echo "Uploading $IPA ($(du -h "$IPA" | cut -f1), zip integrity OK)"
 
           xcrun altool --upload-app -f "$IPA" -t ios \
             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
