@@ -166,29 +166,49 @@ jobs:
           mkdir -p "$HOME/.appstoreconnect/private_keys"
           KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
 
-          # Accept the secret either base64-encoded or as raw PEM. A .p8 pasted
-          # straight from Apple's download is already text, and its body is
-          # itself valid base64 — so blindly decoding it yields plausible
-          # garbage rather than an error, and altool reports the result only as
-          # "The file couldn't be opened because it isn't in the correct
-          # format. (259)", naming neither the file nor the reason.
+          # Three forms of this secret occur in practice and altool accepts
+          # only the first. All three are normalised to PEM here, because each
+          # rejected form otherwise costs a full runner round trip to identify.
+          #
+          #   1. raw PEM          -- the .p8 file's text, armor included
+          #   2. base64 of (1)    -- what `base64 -w0 AuthKey_*.p8` produces
+          #   3. base64 body only -- the .p8 with its -----BEGIN/END----- lines
+          #                          stripped, which decodes to bare DER
+          #
+          # Form 3 is the trap: it looks exactly like form 2 to any check that
+          # only asks "is this base64?", and decoding it yields ~150 bytes of
+          # valid DER with no PEM armor. altool reported that as "The file
+          # couldn't be opened because it isn't in the correct format. (259)",
+          # naming neither the file nor the reason.
           if printf '%s' "$ASC_PRIVATE_KEY" | grep -q -- '-----BEGIN'; then
-            echo "Key secret looks like raw PEM; writing it through unchanged."
+            echo "Key secret is raw PEM; writing it through unchanged."
             printf '%s\n' "$ASC_PRIVATE_KEY" > "$KEY_PATH"
           else
-            echo "Key secret looks base64-encoded; decoding."
-            printf '%s' "$ASC_PRIVATE_KEY" | base64 --decode > "$KEY_PATH"
+            printf '%s' "$ASC_PRIVATE_KEY" | base64 --decode > "$RUNNER_TEMP/key.decoded"
+            if head -c 11 "$RUNNER_TEMP/key.decoded" | grep -q -- '-----BEGIN'; then
+              echo "Key secret is base64-encoded PEM; decoded."
+              cp "$RUNNER_TEMP/key.decoded" "$KEY_PATH"
+            else
+              echo "Key secret decoded to bare DER (no PEM armor); re-armoring."
+              {
+                echo "-----BEGIN PRIVATE KEY-----"
+                base64 -w 64 < "$RUNNER_TEMP/key.decoded" 2>/dev/null \
+                  || base64 -b 64 < "$RUNNER_TEMP/key.decoded"
+                echo "-----END PRIVATE KEY-----"
+              } > "$KEY_PATH"
+            fi
+            rm -f "$RUNNER_TEMP/key.decoded"
           fi
 
-          # Prove the key parses as PEM before altool sees it. Without this the
-          # only symptom is altool's error above, which is indistinguishable
-          # from a malformed IPA. Nothing here prints key material: on failure
-          # it reports the size and the first line's shape, not its contents.
-          if ! head -n 1 "$KEY_PATH" | grep -q -- '-----BEGIN .*PRIVATE KEY-----'; then
-            echo "::error::$KEY_PATH is not a PEM private key ($(wc -c < "$KEY_PATH" | tr -d ' ') bytes). APP_STORE_CONNECT_PRIVATE_KEY must hold the AuthKey_*.p8 contents, either raw or base64-encoded."
+          # Parse the key rather than just eyeballing its header. A PEM header
+          # proves shape, not usability; `openssl pkey` proves altool will be
+          # able to sign with it. Nothing here prints key material — failures
+          # report the byte count only.
+          if ! openssl pkey -in "$KEY_PATH" -noout > /dev/null 2>&1; then
+            echo "::error::$KEY_PATH is not a usable private key ($(wc -c < "$KEY_PATH" | tr -d ' ') bytes). APP_STORE_CONNECT_PRIVATE_KEY must hold the AuthKey_*.p8 contents: raw, base64-encoded, or the base64 body alone."
             exit 1
           fi
-          echo "API key OK ($(wc -c < "$KEY_PATH" | tr -d ' ') bytes, PEM header present)."
+          echo "API key OK ($(wc -c < "$KEY_PATH" | tr -d ' ') bytes, parsed by openssl)."
 
           IPA="$(find build/ios/ipa -name '*.ipa' -print -quit)"
           if [ -z "$IPA" ]; then
