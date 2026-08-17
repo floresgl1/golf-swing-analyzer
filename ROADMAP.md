@@ -433,13 +433,24 @@ complete ($99/yr), which makes the user's own iPhone a stable TestFlight
 target and takes MacInCloud off the table. The deployment path is the existing
 Actions pipeline → sign + upload → TestFlight → phone; no Mac at the desk.
 
-**Increment two — signing, not yet written.** The same patcher grows a signing
-block (App Store Connect API key, distribution cert/profile) and the workflow's
-`--no-codesign` build becomes a signed archive + upload. Deliberately **coupled
-structurally, decoupled temporally**: it belongs in `configure_ios.py` because
-it patches the same regenerated tree for the same reason, but it lands as its
-own verified commit so a signing failure cannot be confused with a camera-fix
-failure.
+**Increment two — split 2a / 2b by the same verification rule.** Manual signing
+was chosen over `-allowProvisioningUpdates` (2026-08-16): an ephemeral runner
+with an empty keychain risks exhausting Apple's small distribution-certificate
+cap, and that failure arrives slowly, long after the pipeline looks healthy.
+
+- **2a — the patcher's tree changes. Locally provable, landed.** Bundle
+  identifier, `ITSAppUsesNonExemptEncryption`, and the signing xcconfig block.
+  All verifiable against a generated tree on any host, exactly as increment one
+  was, so they do not wait on secrets or on Apple.
+- **2b — the workflow's signing and upload. Runner-only, not yet written.**
+  Keychain import of the `.p12`, provisioning-profile install, signed
+  `flutter build ipa --build-number=${{ github.run_number }}` (TestFlight
+  permanently rejects a repeated build number), and upload — behind
+  `workflow_dispatch` so it never fires on a PR. This is the part with **no
+  local proof step**: it can only fail on the runner, so expect to iterate.
+
+Splitting here is the same rule that put the Podfile gate on its own commit: an
+increment is bounded by what its verification can actually prove.
 
 **The rule that decides what goes in which increment: an increment is bounded
 by what its verification can actually prove.** Increment one's property was
@@ -465,12 +476,21 @@ these belong to increment two:
   marked verified on evidence that does not bear on it. It is also a compliance
   *declaration*, not a config toggle, and belongs next to the submission work
   that motivates it rather than inside a camera-permission commit.
-- **Signing keys need a different post-condition than the deployment target.**
-  The generated tree carries `CODE_SIGN_STYLE = Automatic` ×3 and **no**
-  `DEVELOPMENT_TEAM`, `PROVISIONING_PROFILE_SPECIFIER`, or `CODE_SIGN_IDENTITY`.
-  So manual signing flips one existing key and *inserts* three the template
-  never emits — and the substitute-narrow/count-wide asymmetry does not
-  transfer, because you cannot count what was never there.
+- **Signing goes in the xcconfig, NOT the pbxproj** (corrects an earlier note in
+  this file). The generated project's three `CODE_SIGN_STYLE = Automatic`
+  entries belong to **RunnerTests**, which `flutter build ipa` never archives.
+  The **Runner app target carries no signing settings at all**, in any of Debug
+  / Release / Profile — measured per-configuration against the pinned SDK. With
+  nothing at target level to override it, project-level xcconfig applies
+  cleanly, so all four settings are written as a delimited managed block in
+  `ios/Flutter/Release.xcconfig` (one line, `#include "Generated.xcconfig"`, in
+  the generated tree). No surgical insertion into a NeXTSTEP plist, and the
+  "you cannot count what was never there" problem never arises.
+  Idempotency comes from *replacing* the delimited block, never appending —
+  xcconfig takes the **last** assignment, so a stacked block would let stale
+  values win silently. The post-condition is anchored to the whole file rather
+  than the block for the same reason: an assignment placed after the block
+  would win, and must fail the check.
 - **Build numbering.** `pubspec.yaml` is at `0.1.0+1` and TestFlight
   permanently rejects a repeated build number; derive it from
   `github.run_number` rather than committing bumps.
