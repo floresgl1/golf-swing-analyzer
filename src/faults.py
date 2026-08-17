@@ -6,7 +6,8 @@ import numpy as np
 import math
 import sys
 
-from swing_phases import (detect_phases, require_valid_fps, swing_tempo, LEAD_WRIST,
+from swing_phases import (detect_phases, implausible_swing, require_valid_fps,
+                          swing_tempo, LEAD_WRIST,
                           BASELINE_FPS, frames_for,
                           IMPACT_RADIUS_S, DEFAULT_RADIUS_S, ADDRESS_OFFSET_S)
 from drill_recommender import print_recommendations
@@ -276,8 +277,12 @@ def main():
         cap.release()
 
     phases = detect_phases(wrist_y)
-    if not phases:
-        print("Could not detect swing phases - no fault verdicts.")
+    # Refuse outright rather than printing verdicts computed from a trajectory
+    # that cannot be a swing. Partial output is the same failure in a smaller
+    # costume: it invites the surviving numbers to be read as meaningful.
+    reason = implausible_swing(phases)
+    if reason:
+        print(f"No swing detected - {reason}. No fault verdicts.")
         return
 
     head = detect_head_movement(eye_x, eye_y, torso, phases)

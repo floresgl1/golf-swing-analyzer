@@ -7,7 +7,8 @@ fps==0 guard on swing_tempo.
 import numpy as np
 import pytest
 
-from swing_phases import detect_phases, swing_tempo, require_valid_fps
+from swing_phases import (detect_phases, implausible_swing, swing_tempo,
+                          require_valid_fps)
 
 
 def _synthetic_wrist_y():
@@ -74,3 +75,50 @@ def test_require_valid_fps_rejects_invalid(bad):
     """Invalid fps must exit cleanly (SystemExit), not raise ZeroDivision etc."""
     with pytest.raises(SystemExit):
         require_valid_fps(bad, 'missing.mp4')
+
+
+# --- P1.1: presence gate -----------------------------------------------------
+# Found on device 2026-08-17 -- a video of nothing produced a full fault report.
+# These cover impossibilities only; none of them encode a calibrated threshold.
+
+def test_implausible_swing_accepts_a_normal_swing():
+    # 30 fps, backswing 22 frames, downswing 8 -> ~2.75:1
+    phases = {'takeaway': 10, 'top': 32, 'impact': 40, 'finish': 60}
+    assert implausible_swing(phases) is None
+
+
+def test_implausible_swing_rejects_the_device_case():
+    # The trajectory the app actually reported from a clip containing no swing:
+    # backswing 6 frames, downswing 58, ratio 0.1:1.
+    phases = {'takeaway': 0, 'top': 6, 'impact': 64, 'finish': 100}
+    reason = implausible_swing(phases)
+    assert reason is not None
+    assert 'downswing' in reason
+
+
+def test_implausible_swing_rejects_zero_duration_backswing():
+    phases = {'takeaway': 5, 'top': 5, 'impact': 20, 'finish': 40}
+    assert implausible_swing(phases) is not None
+
+
+def test_implausible_swing_rejects_zero_duration_downswing():
+    phases = {'takeaway': 0, 'top': 20, 'impact': 20, 'finish': 40}
+    assert implausible_swing(phases) is not None
+
+
+def test_implausible_swing_rejects_no_phases():
+    assert implausible_swing(None) is not None
+
+
+def test_implausible_swing_boundary_is_at_the_inversion_point():
+    """Equal halves reject; one frame either side of that decides it.
+
+    The gate is deliberately loose -- it rejects only what cannot be a swing,
+    not what is merely an odd one. 11:10 is a strange tempo and still passes,
+    because judging *how good* a tempo is needs the P0.1 corpus.
+    """
+    equal = {'takeaway': 0, 'top': 10, 'impact': 20, 'finish': 30}
+    assert implausible_swing(equal) is not None
+
+    barely_valid = {'takeaway': 0, 'top': 11, 'impact': 21, 'finish': 30}
+    assert implausible_swing(barely_valid) is None

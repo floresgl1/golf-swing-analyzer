@@ -163,6 +163,57 @@ def detect_phases(wrist_y, fps=BASELINE_FPS, smooth=None):
     return {'takeaway': takeaway, 'top': top, 'impact': impact, 'finish': finish}
 
 
+def implausible_swing(phases):
+    """Return why `phases` cannot describe a golf swing, or None if it might.
+
+    This answers PRESENCE, not severity. `detect_phases` locates its events with
+    argmin/argmax over slices, and those always return an index — so it reports
+    phases for any trajectory whatsoever, including one interpolated out of a
+    video containing no golfer. Found on device 2026-08-17: a clip of nothing
+    produced a full fault report with drills. See P1.1 in ROADMAP.md.
+
+    Every check here is an impossibility, not a tuned threshold, so none of them
+    borrow against the P0.1 corpus:
+
+      - The events must be strictly ordered. `detect_phases` guarantees only
+        takeaway <= top <= impact by construction; equality means a phase has
+        zero duration, which is not a swing that happened.
+      - The backswing must outlast the downswing. The downswing is gravity- and
+        release-assisted and is universally the faster half — tour players
+        average ~3:1 and amateurs less, but the ordering itself does not
+        invert. This is an empirical invariant of golf swings rather than a law
+        of physics, so it is deliberately set AT the inversion point: it
+        rejects 0.1:1, and passes 1.1:1 even though that is a strange swing.
+        Judging *how good* a tempo is needs the corpus; judging that a swing
+        took ten times longer coming down than going up does not.
+
+    Deliberately NOT checked here: anything needing a calibrated number. If a
+    proposed check requires a constant only P0.1 can supply, it belongs in P0.2.
+    """
+    if not phases:
+        return 'no phases were detected'
+
+    takeaway = phases['takeaway']
+    top = phases['top']
+    impact = phases['impact']
+
+    if top <= takeaway:
+        return ('the backswing has no duration (takeaway and top are the same '
+                'frame)')
+    if impact <= top:
+        return ('the downswing has no duration (top and impact are the same '
+                'frame)')
+
+    backswing_frames = top - takeaway
+    downswing_frames = impact - top
+    if backswing_frames <= downswing_frames:
+        return (f'the downswing ({downswing_frames} frames) is not shorter '
+                f'than the backswing ({backswing_frames} frames), which does '
+                'not happen in a golf swing')
+
+    return None
+
+
 def swing_tempo(phases, fps):
     """Compute backswing/downswing durations and their tempo ratio.
 
