@@ -124,13 +124,22 @@ class SwingAnalyzer {
     final torso = [for (final f in features) f.torso];
     final wristY = [for (final f in features) f.wristY];
 
-    final phases = detectPhases(wristY);
-    if (phases == null) {
-      throw const SwingAnalysisException(
-        'Could not detect swing phases — no clear pose was found. Make sure '
-        'your whole body is in frame and try again.',
+    final detected = detectPhases(wristY);
+
+    // Hard fail rather than reporting around the gap. Showing tempo with the
+    // verdicts suppressed would invite the surviving numbers to be read as
+    // meaningful — the same failure in a smaller costume. If there was no
+    // swing there is nothing for the app to say about it.
+    final reason = implausibleSwing(detected);
+    if (reason != null) {
+      throw SwingAnalysisException(
+        "That didn't look like a golf swing — $reason. Film from side-on with "
+        'your whole body in frame, and keep the camera still.',
       );
     }
+
+    // Non-null past the guard: implausibleSwing returns a reason for null.
+    final phases = detected!;
 
     final head = detectHeadMovement(eyeX, eyeY, torso, phases);
     final pivot = detectReversePivot(eyeX, hipX, torso, phases);

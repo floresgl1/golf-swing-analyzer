@@ -56,4 +56,50 @@ void main() {
       expect(swingTempo(phases, 0), isNull);
     });
   });
+
+  // --- P1.1: presence gate ---------------------------------------------------
+  // Found on device 2026-08-17 -- a video of nothing produced a full fault
+  // report. Byte-parallel with test_swing_phases.py. Impossibilities only; no
+  // calibrated thresholds.
+  group('implausibleSwing', () {
+    SwingPhases p(int takeaway, int top, int impact, int finish) => SwingPhases(
+          takeaway: takeaway,
+          top: top,
+          impact: impact,
+          finish: finish,
+        );
+
+    test('accepts a normal swing', () {
+      // 30 fps, backswing 22 frames, downswing 8 -> ~2.75:1
+      expect(implausibleSwing(p(10, 32, 40, 60)), isNull);
+    });
+
+    test('rejects the device case', () {
+      // The trajectory the app actually reported from a clip containing no
+      // swing: backswing 6 frames, downswing 58, ratio 0.1:1.
+      final reason = implausibleSwing(p(0, 6, 64, 100));
+      expect(reason, isNotNull);
+      expect(reason, contains('downswing'));
+    });
+
+    test('rejects a zero-duration backswing', () {
+      expect(implausibleSwing(p(5, 5, 20, 40)), isNotNull);
+    });
+
+    test('rejects a zero-duration downswing', () {
+      expect(implausibleSwing(p(0, 20, 20, 40)), isNotNull);
+    });
+
+    test('rejects null phases', () {
+      expect(implausibleSwing(null), isNotNull);
+    });
+
+    test('boundary sits at the inversion point', () {
+      // Deliberately loose: rejects only what cannot be a swing, not what is
+      // merely odd. 11:10 is a strange tempo and still passes, because judging
+      // *how good* a tempo is needs the P0.1 corpus.
+      expect(implausibleSwing(p(0, 10, 20, 30)), isNotNull);
+      expect(implausibleSwing(p(0, 11, 21, 30)), isNull);
+    });
+  });
 }
