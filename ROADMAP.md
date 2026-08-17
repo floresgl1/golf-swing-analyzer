@@ -348,7 +348,7 @@ The `>=` comparisons elsewhere in `src/` are a different kind and are not counte
 **Method, for whoever redoes this audit:** mutate a constant in `src/faults.py`, run pytest, confirm the suite goes red, restore the constant. If it stays green, the test is vacuous. This same property was independently reproduced in a generated characterization file during a sub-agent probe; that file was deleted and the finding above rests on `tests/test_faults.py` alone, which predates it.
 
 ### P1 — Flutter Device Testing
-**Status**: Not started
+**Status**: In progress — app installed via TestFlight 2026-08-17, first finding below
 **Goal**: Validate the mobile experience end-to-end on a real device.
 
 - Run `flutter create .` to generate platform folders, then `python3 tool/configure_ios.py` (never hand-edit `ios/` — see below)
@@ -357,6 +357,66 @@ The `>=` comparisons elsewhere in `src/` are a different kind and are not counte
 - Profile frame extraction and analysis time — is the user waiting too long?
 - Test on both iOS and Android if possible
 - Address any ML Kit keypoint accuracy issues (may need threshold adjustments for mobile)
+
+#### P1.1 — The app cannot say "that wasn't a swing" (found on device 2026-08-17)
+
+**First real device test, first finding.** A video of *nothing* — no golfer, no
+swing — produced a complete report: a `POSSIBLE` head-sway verdict at 0.44
+torso-lengths against a 0.13 reference, a tempo breakdown, and three
+recommended drills. Nothing in the app expressed doubt that a swing existed.
+
+This is **not a threshold problem**. It is a missing precondition, and no
+amount of P0.1 recalibration touches it: a detector tuned perfectly still has
+nothing to say about input that contains no swing.
+
+**The chain, as it stands:**
+
+1. **Pose confidence is never read.** `pose_estimator.dart` rejects a frame only
+   when `poses.isEmpty` or a required landmark is `null`. ML Kit emits all 33
+   landmarks *with a `likelihood` score* even when it is guessing, so landmarks
+   are essentially never null once any pose is returned. Grepping `lib/` for
+   `likelihood|confidence` returns **zero hits** — the one signal separating "a
+   person is here" from "a person has been invented" is discarded at the source.
+2. **Phase detection's only precondition is two frames.** `swing_phases.dart`:
+   `if (goodCount < 2) return null`. After that `fillNaNLinear` interpolates
+   gaps into a smooth curve, and `top` / `impact` / `finish` / `takeaway` are
+   `argMax`/`argMin` over slices — which **always return an index**. So
+   `detectPhases` effectively never returns null, and the
+   "Could not detect swing phases" path in `swing_analyzer.dart` is close to
+   unreachable in practice.
+3. **The reported tempo proves it fired on noise.** Backswing 0.20 s (6 frames),
+   downswing 1.94 s (58 frames), ratio **0.1 : 1**. A golf swing runs about
+   **3 : 1** the other way. The detected downswing was ten times the backswing —
+   not a bad swing, not a swing.
+
+**Why this can be fixed before P0.1, unlike the fault thresholds.** "Is there a
+swing at all" is a categorically different question from "is this sway 0.13 or
+0.11", and two gates carry no calibration debt:
+
+- **ML Kit's own `likelihood`** — the detector's self-assessment, not a
+  golf-domain constant invented by us.
+- **Physical plausibility of the detected phases** — a backswing shorter than
+  its downswing is impossible at any frame rate, whatever the corpus later says
+  about sway. Same for phase indices that collapse together.
+
+Do **not** let this become a back door for guessed fault thresholds. The gate
+answers presence, not severity; if a proposed check needs a number that only
+the corpus can supply, it belongs in P0.2, not here.
+
+**Related defect — the tempo caveat is keyed on the wrong variable.**
+`report_screen.dart`'s `_tempoCaveat` branches on **fps alone**, so below 120 fps
+it always prints "the downswing spans only a few frames". On this report the
+detected downswing was **58 frames**. The hedge describes a condition that is
+not true, which spends credibility exactly where the user most needs to trust
+it. It should key on the detected frame counts, not the capture rate.
+
+**What did work**, and is worth not re-testing: the camera permission prompt
+appeared with its usage string (the failure no compile check could catch, and
+the patcher's whole reason for existing), the full pipeline ran on-device
+(capture → ffmpeg extraction → ML Kit pose → phases → faults → drills), and the
+beta banner rendered and hedged accurately. The banner is not a substitute for
+this gate, though: it qualifies *precision*, and the claim needed here is about
+the *input*.
 
 **iOS compile gate (added 2026-08-04)** — `.github/workflows/ios-build.yml`
 builds iOS unsigned on a GitHub Actions `macos-latest` runner, so iOS
