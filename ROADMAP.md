@@ -442,15 +442,42 @@ cap, and that failure arrives slowly, long after the pipeline looks healthy.
   identifier, `ITSAppUsesNonExemptEncryption`, and the signing xcconfig block.
   All verifiable against a generated tree on any host, exactly as increment one
   was, so they do not wait on secrets or on Apple.
-- **2b — the workflow's signing and upload. Runner-only, not yet written.**
-  Keychain import of the `.p12`, provisioning-profile install, signed
-  `flutter build ipa --build-number=${{ github.run_number }}` (TestFlight
-  permanently rejects a repeated build number), and upload — behind
-  `workflow_dispatch` so it never fires on a PR. This is the part with **no
-  local proof step**: it can only fail on the runner, so expect to iterate.
+- **2b — the workflow's signing and upload. Runner-only. ✅ WORKING
+  2026-08-17.** `.github/workflows/ios-release.yml`: keychain import of the
+  `.p12`, provisioning-profile install, signed `flutter build ipa
+  --build-number=${{ github.run_number }}` (TestFlight permanently rejects a
+  repeated build number), and upload via `altool` — behind `workflow_dispatch`
+  so it never fires on a PR. First successful upload: run `32000315770`,
+  61.9 MB IPA accepted by App Store Connect.
 
 Splitting here is the same rule that put the Podfile gate on its own commit: an
 increment is bounded by what its verification can actually prove.
+
+**What 2b's three failures cost, and what they have in common.** Every one was
+a difference between this container and the runner that no local check could
+have caught — which is the entire argument for having split it out rather than
+shipping it with 2a.
+
+1. **xcconfig comments are `//`, not `#`.** `#` introduces a preprocessor
+   directive, so the managed block's delimiters archived as `unsupported
+   preprocessor directive '>>>'`. The file was written byte-for-byte as
+   intended; the intent was wrong, and no post-condition comparing output to
+   intent can catch that.
+2. **BSD vs GNU `base64`.** GNU refuses to decode raw PEM (exit 1, zero bytes),
+   which under `set -euo pipefail` would have aborted the step here. macOS's
+   BSD `base64` exited 0 and passed garbage downstream. Same command, different
+   tolerance; only the lenient one reaches a confusing error.
+3. **The API-key secret can arrive in three forms** and altool accepts one.
+   Raw PEM, base64-of-PEM, and — the trap — the `.p8`'s base64 **body** with
+   its armor lines stripped, which is valid base64 that decodes to ~150 bytes
+   of valid DER that no PEM parser will read. All three are now normalised.
+
+**The transferable lesson: prove each input before the tool that consumes it.**
+altool reads two files and reports both failures identically ("The file
+couldn't be opened because it isn't in the correct format. (259)"), naming
+neither. Adding a per-input check turned one ambiguous error into a named
+cause on the very next run. Any step that hands several artefacts to one opaque
+tool wants the same treatment.
 
 **The rule that decides what goes in which increment: an increment is bounded
 by what its verification can actually prove.** Increment one's property was
