@@ -54,4 +54,28 @@ void main() {
       expect((Offset.zero & screen).contains(fallback.center), isTrue);
     });
   });
+
+  // Found on device 2026-08-17: participant.json transferred every time while
+  // swing_history.jsonl was silently dropped, twice, with no error. iOS
+  // classifies attachments by type and .jsonl has no registered one, so the
+  // exporter must state it.
+  group('mimeTypeForCorpusFile', () {
+    test('.jsonl is declared as plain text', () {
+      // JSON Lines is not valid JSON as a whole -- each line is -- and
+      // text/plain is the type every share target accepts.
+      expect(mimeTypeForCorpusFile('swing_history.jsonl'), 'text/plain');
+      expect(
+          mimeTypeForCorpusFile('swing_history_failures.jsonl'), 'text/plain');
+    });
+
+    test('.json keeps its own type', () {
+      expect(mimeTypeForCorpusFile('participant.json'), 'application/json');
+    });
+
+    test('every corpus file gets a non-empty type', () {
+      for (final name in CorpusExporter.corpusFileNames) {
+        expect(mimeTypeForCorpusFile(name), isNotEmpty, reason: name);
+      }
+    });
+  });
 }

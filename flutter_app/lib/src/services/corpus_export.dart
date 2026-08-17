@@ -52,6 +52,19 @@ Rect shareOriginOrFallback(Rect? fromControl, Size screen) {
   return Rect.fromCenter(center: bounds.center, width: 1, height: 1);
 }
 
+/// MIME type to attach a corpus file with.
+///
+/// iOS classifies a share attachment by type, and `.jsonl` has no registered
+/// one. Observed on device 2026-08-17: `participant.json` transferred every
+/// time while `swing_history.jsonl` was silently dropped by the share target,
+/// twice, with no error — the share sheet reported "5 swings" and delivered
+/// only the file whose extension iOS recognised.
+///
+/// JSON Lines is not valid JSON as a whole (each *line* is), so `text/plain`
+/// is both more accurate and the type every share target accepts.
+String mimeTypeForCorpusFile(String fileName) =>
+    fileName.endsWith('.jsonl') ? 'text/plain' : 'application/json';
+
 /// What an export attempt produced.
 class ExportResult {
   /// Files that existed and were handed to the share sheet.
@@ -88,7 +101,7 @@ class CorpusExporter {
     for (final name in corpusFileNames) {
       final file = File(p.join(dir.path, name));
       if (await file.exists()) {
-        present.add(XFile(file.path));
+        present.add(XFile(file.path, mimeType: mimeTypeForCorpusFile(name)));
         names.add(name);
       }
     }
