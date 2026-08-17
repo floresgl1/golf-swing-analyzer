@@ -29,6 +29,24 @@ void main() {
       );
     });
 
+    test('clamps a partly off-screen control into the source view', () {
+      // iOS requires CGRectContainsRect(view.frame, origin). A button in a
+      // scrolled list can extend past the screen edge, and the un-clamped rect
+      // would be rejected even though it is non-empty.
+      const offBottom = Rect.fromLTWH(16, 900, 398, 100); // ends at y=1000
+      final clamped = shareOriginOrFallback(offBottom, screen);
+      expect((Offset.zero & screen).contains(clamped.topLeft), isTrue);
+      expect(clamped.bottom, lessThanOrEqualTo(screen.height));
+      expect(clamped.isEmpty, isFalse);
+    });
+
+    test('falls back when the control is entirely off screen', () {
+      const gone = Rect.fromLTWH(16, 2000, 398, 48);
+      final origin = shareOriginOrFallback(gone, screen);
+      expect(origin.isEmpty, isFalse);
+      expect((Offset.zero & screen).contains(origin.center), isTrue);
+    });
+
     test('the fallback sits inside the screen it will be presented in', () {
       // UIKit also requires the origin to be within the source view's
       // coordinate space -- the device error named both conditions.
