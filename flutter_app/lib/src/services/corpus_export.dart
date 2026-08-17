@@ -27,18 +27,43 @@ import 'package:share_plus/share_plus.dart';
 ///     source view: {{0, 0}, {430, 932}})
 ///
 /// which is what a golfer saw on device 2026-08-17 when the caller omitted the
-/// argument entirely. Anchoring to the button is also the right iPad behaviour
-/// — the popover should point at the control that was tapped — so the fallback
-/// exists only for the case where the button has no box yet, and is a small
-/// non-degenerate rect rather than [Rect.zero].
+/// argument entirely.
+///
+/// **There are two rejection conditions, not one**, and passing a non-empty
+/// rect only satisfies the first. From the plugin's `FPPSharePlusPlugin.m`:
+///
+///     BOOL isCoordinateSpaceOfSourceView =
+///         CGRectContainsRect(controller.view.frame, origin);
+///     if (hasPopoverPresentationController &&
+///         (!isCoordinateSpaceOfSourceView || CGRectIsEmpty(origin))) { ... }
+///
+/// So the rect must *also* lie entirely inside the presenting view. Anchoring
+/// to the button gives the right iPad behaviour — the popover points at the
+/// control that was tapped — but a button rect is only contained if the
+/// control is fully on screen, which a scrolled list does not guarantee.
+/// Intersecting with the screen makes containment true by construction and
+/// still points at the visible part of the button.
 Rect shareOriginOrFallback(Rect? fromControl, Size screen) {
-  if (fromControl != null && !fromControl.isEmpty) return fromControl;
-  return Rect.fromCenter(
-    center: Offset(screen.width / 2, screen.height / 2),
-    width: 1,
-    height: 1,
-  );
+  final bounds = Offset.zero & screen;
+  final clamped = fromControl?.intersect(bounds);
+  // `intersect` returns a negative-sized rect when they do not overlap at all;
+  // `isEmpty` covers that as well as a genuinely zero-sized control.
+  if (clamped != null && !clamped.isEmpty) return clamped;
+  return Rect.fromCenter(center: bounds.center, width: 1, height: 1);
 }
+
+/// MIME type to attach a corpus file with.
+///
+/// iOS classifies a share attachment by type, and `.jsonl` has no registered
+/// one. Observed on device 2026-08-17: `participant.json` transferred every
+/// time while `swing_history.jsonl` was silently dropped by the share target,
+/// twice, with no error — the share sheet reported "5 swings" and delivered
+/// only the file whose extension iOS recognised.
+///
+/// JSON Lines is not valid JSON as a whole (each *line* is), so `text/plain`
+/// is both more accurate and the type every share target accepts.
+String mimeTypeForCorpusFile(String fileName) =>
+    fileName.endsWith('.jsonl') ? 'text/plain' : 'application/json';
 
 /// What an export attempt produced.
 class ExportResult {
@@ -76,7 +101,7 @@ class CorpusExporter {
     for (final name in corpusFileNames) {
       final file = File(p.join(dir.path, name));
       if (await file.exists()) {
-        present.add(XFile(file.path));
+        present.add(XFile(file.path, mimeType: mimeTypeForCorpusFile(name)));
         names.add(name);
       }
     }

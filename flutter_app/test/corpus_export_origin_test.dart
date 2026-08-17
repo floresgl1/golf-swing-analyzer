@@ -29,11 +29,53 @@ void main() {
       );
     });
 
+    test('clamps a partly off-screen control into the source view', () {
+      // iOS requires CGRectContainsRect(view.frame, origin). A button in a
+      // scrolled list can extend past the screen edge, and the un-clamped rect
+      // would be rejected even though it is non-empty.
+      const offBottom = Rect.fromLTWH(16, 900, 398, 100); // ends at y=1000
+      final clamped = shareOriginOrFallback(offBottom, screen);
+      expect((Offset.zero & screen).contains(clamped.topLeft), isTrue);
+      expect(clamped.bottom, lessThanOrEqualTo(screen.height));
+      expect(clamped.isEmpty, isFalse);
+    });
+
+    test('falls back when the control is entirely off screen', () {
+      const gone = Rect.fromLTWH(16, 2000, 398, 48);
+      final origin = shareOriginOrFallback(gone, screen);
+      expect(origin.isEmpty, isFalse);
+      expect((Offset.zero & screen).contains(origin.center), isTrue);
+    });
+
     test('the fallback sits inside the screen it will be presented in', () {
       // UIKit also requires the origin to be within the source view's
       // coordinate space -- the device error named both conditions.
       final fallback = shareOriginOrFallback(null, screen);
       expect((Offset.zero & screen).contains(fallback.center), isTrue);
+    });
+  });
+
+  // Found on device 2026-08-17: participant.json transferred every time while
+  // swing_history.jsonl was silently dropped, twice, with no error. iOS
+  // classifies attachments by type and .jsonl has no registered one, so the
+  // exporter must state it.
+  group('mimeTypeForCorpusFile', () {
+    test('.jsonl is declared as plain text', () {
+      // JSON Lines is not valid JSON as a whole -- each line is -- and
+      // text/plain is the type every share target accepts.
+      expect(mimeTypeForCorpusFile('swing_history.jsonl'), 'text/plain');
+      expect(
+          mimeTypeForCorpusFile('swing_history_failures.jsonl'), 'text/plain');
+    });
+
+    test('.json keeps its own type', () {
+      expect(mimeTypeForCorpusFile('participant.json'), 'application/json');
+    });
+
+    test('every corpus file gets a non-empty type', () {
+      for (final name in CorpusExporter.corpusFileNames) {
+        expect(mimeTypeForCorpusFile(name), isNotEmpty, reason: name);
+      }
     });
   });
 }

@@ -59,6 +59,19 @@ BUNDLE_ID = "io.github.floresgl1.golfSwingAnalyzer"
 # encryption: it ships no custom cryptography, and HTTPS/ML Kit are exempt.
 ENCRYPTION_KEY = "ITSAppUsesNonExemptEncryption"
 
+# Expose the app's Documents directory in Files (On My iPhone > <app>), which
+# is where the corpus lives. Without these the only way off the device is the
+# share sheet, and the share sheet is one dependency deep in platform quirks:
+# it cost four builds to a popover-anchor rule, then silently dropped the
+# .jsonl attachment because iOS could not classify the extension. Both keys
+# are needed — UIFileSharingEnabled alone lists the folder, and
+# LSSupportsOpeningDocumentsInPlace lets files be opened and copied from it.
+#
+# This does not replace the share sheet; it is a second path that depends on
+# nothing but the filesystem, for a corpus that P0.1 cannot proceed without.
+FILE_SHARING_KEY = "UIFileSharingEnabled"
+DOCS_IN_PLACE_KEY = "LSSupportsOpeningDocumentsInPlace"
+
 # Signing is configured from the environment because the values are account
 # secrets that must not live in the repo. Absent = build unsigned, which is what
 # local runs and the compile-only CI job want.
@@ -194,6 +207,8 @@ def patch_info_plist(plist_path: Path) -> None:
     wanted = {
         CAMERA_KEY: CAMERA_USAGE_DESCRIPTION,
         ENCRYPTION_KEY: False,
+        FILE_SHARING_KEY: True,
+        DOCS_IN_PLACE_KEY: True,
     }
     plist.update(wanted)
 
@@ -500,6 +515,7 @@ def main(argv: list[str]) -> int:
     )
     print(
         f"ios: {CAMERA_KEY} set; {ENCRYPTION_KEY}=false; "
+        f"{FILE_SHARING_KEY}/{DOCS_IN_PLACE_KEY}=true; "
         f"deployment target {DEPLOYMENT_TARGET} in every build configuration "
         f"{podfile_state}"
     )
