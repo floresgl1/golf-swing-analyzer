@@ -68,9 +68,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _export() async {
     setState(() => _exporting = true);
+    // Captured before the call so the failure message can report what we sent.
+    // iOS rejects a share origin for two different reasons -- empty, or not
+    // contained in the source view -- and its error prints only the rect it
+    // received, which is indistinguishable from "we sent nothing" when that
+    // rect is zero. Naming our own value separates the two without a rebuild.
+    final origin = _shareOrigin();
+    final screen = MediaQuery.of(context).size;
     try {
       final result = await const CorpusExporter().share(
-        sharePositionOrigin: _shareOrigin(),
+        sharePositionOrigin: origin,
       );
       if (!mounted) return;
       if (result.isEmpty) {
@@ -81,7 +88,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export failed: $error')),
+        SnackBar(
+          duration: const Duration(seconds: 20),
+          content: Text('Export failed.\nsent origin: $origin\n'
+              'screen: $screen\n$error'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _exporting = false);
