@@ -10,11 +10,35 @@
 library;
 
 import 'dart:io';
-import 'dart:ui' show Rect;
+import 'dart:ui' show Offset, Rect, Size;
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+
+/// A share origin iOS will accept, given the rect of the tapped control.
+///
+/// `UIActivityViewController` is a popover on iPad and must be anchored, and
+/// share_plus enforces that on every iOS device: a null or zero-sized origin
+/// fails the whole export with
+///
+///     PlatformException(error, sharePositionOrigin: argument must be set,
+///     {{0, 0}, {0, 0}} must be non-zero and within coordinate space of
+///     source view: {{0, 0}, {430, 932}})
+///
+/// which is what a golfer saw on device 2026-08-17 when the caller omitted the
+/// argument entirely. Anchoring to the button is also the right iPad behaviour
+/// — the popover should point at the control that was tapped — so the fallback
+/// exists only for the case where the button has no box yet, and is a small
+/// non-degenerate rect rather than [Rect.zero].
+Rect shareOriginOrFallback(Rect? fromControl, Size screen) {
+  if (fromControl != null && !fromControl.isEmpty) return fromControl;
+  return Rect.fromCenter(
+    center: Offset(screen.width / 2, screen.height / 2),
+    width: 1,
+    height: 1,
+  );
+}
 
 /// What an export attempt produced.
 class ExportResult {

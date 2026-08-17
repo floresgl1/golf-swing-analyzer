@@ -348,7 +348,7 @@ The `>=` comparisons elsewhere in `src/` are a different kind and are not counte
 **Method, for whoever redoes this audit:** mutate a constant in `src/faults.py`, run pytest, confirm the suite goes red, restore the constant. If it stays green, the test is vacuous. This same property was independently reproduced in a generated characterization file during a sub-agent probe; that file was deleted and the finding above rests on `tests/test_faults.py` alone, which predates it.
 
 ### P1 — Flutter Device Testing
-**Status**: Not started
+**Status**: In progress — app installed via TestFlight 2026-08-17, first finding below
 **Goal**: Validate the mobile experience end-to-end on a real device.
 
 - Run `flutter create .` to generate platform folders, then `python3 tool/configure_ios.py` (never hand-edit `ios/` — see below)
@@ -357,6 +357,104 @@ The `>=` comparisons elsewhere in `src/` are a different kind and are not counte
 - Profile frame extraction and analysis time — is the user waiting too long?
 - Test on both iOS and Android if possible
 - Address any ML Kit keypoint accuracy issues (may need threshold adjustments for mobile)
+
+#### P1.1 — The app cannot say "that wasn't a swing" (found on device 2026-08-17)
+
+**First real device test, first finding.** A video of *nothing* — no golfer, no
+swing — produced a complete report: a `POSSIBLE` head-sway verdict at 0.44
+torso-lengths against a 0.13 reference, a tempo breakdown, and three
+recommended drills. Nothing in the app expressed doubt that a swing existed.
+
+This is **not a threshold problem**. It is a missing precondition, and no
+amount of P0.1 recalibration touches it: a detector tuned perfectly still has
+nothing to say about input that contains no swing.
+
+**The chain, as it stands:**
+
+1. **Pose confidence is never read.** `pose_estimator.dart` rejects a frame only
+   when `poses.isEmpty` or a required landmark is `null`. ML Kit emits all 33
+   landmarks *with a `likelihood` score* even when it is guessing, so landmarks
+   are essentially never null once any pose is returned. Grepping `lib/` for
+   `likelihood|confidence` returns **zero hits** — the one signal separating "a
+   person is here" from "a person has been invented" is discarded at the source.
+2. **Phase detection's only precondition is two frames.** `swing_phases.dart`:
+   `if (goodCount < 2) return null`. After that `fillNaNLinear` interpolates
+   gaps into a smooth curve, and `top` / `impact` / `finish` / `takeaway` are
+   `argMax`/`argMin` over slices — which **always return an index**. So
+   `detectPhases` effectively never returns null, and the
+   "Could not detect swing phases" path in `swing_analyzer.dart` is close to
+   unreachable in practice.
+3. **The reported tempo proves it fired on noise.** Backswing 0.20 s (6 frames),
+   downswing 1.94 s (58 frames), ratio **0.1 : 1**. A golf swing runs about
+   **3 : 1** the other way. The detected downswing was ten times the backswing —
+   not a bad swing, not a swing.
+
+**Why this can be fixed before P0.1, unlike the fault thresholds.** "Is there a
+swing at all" is a categorically different question from "is this sway 0.13 or
+0.11", and two gates carry no calibration debt:
+
+- **ML Kit's own `likelihood`** — the detector's self-assessment, not a
+  golf-domain constant invented by us.
+- **Physical plausibility of the detected phases** — a backswing shorter than
+  its downswing is impossible at any frame rate, whatever the corpus later says
+  about sway. Same for phase indices that collapse together.
+
+Do **not** let this become a back door for guessed fault thresholds. The gate
+answers presence, not severity; if a proposed check needs a number that only
+the corpus can supply, it belongs in P0.2, not here.
+
+**Related defect — the tempo caveat is keyed on the wrong variable.**
+`report_screen.dart`'s `_tempoCaveat` branches on **fps alone**, so below 120 fps
+it always prints "the downswing spans only a few frames". On this report the
+detected downswing was **58 frames**. The hedge describes a condition that is
+not true, which spends credibility exactly where the user most needs to trust
+it. It should key on the detected frame counts, not the capture rate.
+
+**What did work**, and is worth not re-testing: the camera permission prompt
+appeared with its usage string (the failure no compile check could catch, and
+the patcher's whole reason for existing), the full pipeline ran on-device
+(capture → ffmpeg extraction → ML Kit pose → phases → faults → drills), and the
+beta banner rendered and hedged accurately. The banner is not a substitute for
+this gate, though: it qualifies *precision*, and the claim needed here is about
+the *input*.
+
+#### P1.2 — Corpus export was broken on iOS, blocking P0.1 (fixed 2026-08-17)
+
+**This was a P0.1 blocker, not a UI annoyance.** Export is the *only* way swings
+leave the device — no backend, no account, by design — so while it failed, the
+corpus P0.1 depends on could not be collected at all. Found the first time
+anyone pressed the button on a real phone:
+
+```
+Export failed: PlatformException(error, sharePositionOrigin: argument must be
+set, {{0, 0}, {0, 0}} must be non-zero and within coordinate space of source
+view: {{0, 0}, {430, 932}})
+```
+
+`UIActivityViewController` is a popover on iPad and must be anchored, and
+share_plus enforces that on **every** iOS device: a null or zero-sized origin
+fails the entire export. `CorpusExporter.share()` had always accepted a
+`Rect? sharePositionOrigin` — the plumbing was there from the start — and
+`profile_screen.dart` simply never passed one. The parameter existed, was
+optional, and defaulted to the one value iOS rejects.
+
+Fixed by anchoring to the export button via a `GlobalKey`, which is also the
+correct iPad behaviour: the popover should point at the control that was tapped.
+`shareOriginOrFallback` guarantees the result is never degenerate, since both
+`null` and `Rect.zero` are rejected.
+
+**Why no test caught it and what now does.** The failure lives in the gap
+between an optional Dart parameter and a platform requirement — nothing in the
+Dart type system objects to omitting it, and no unit test exercises UIKit. The
+boundary rule was therefore extracted into a pure function so it *is* testable,
+and verified non-vacuous by mutation: making the fallback return `Rect.zero`
+turns the test red, and reverting the caller to `share()` trips `flutter
+analyze` with an unused `_shareOrigin`. Neither is a substitute for pressing the
+button on a phone.
+
+**The transferable lesson: an optional parameter that a platform requires is a
+required parameter with a bug in it.** Worth a look wherever else the app hands
+something to a plugin with a nullable positional or named argument.
 
 **iOS compile gate (added 2026-08-04)** — `.github/workflows/ios-build.yml`
 builds iOS unsigned on a GitHub Actions `macos-latest` runner, so iOS
@@ -442,15 +540,42 @@ cap, and that failure arrives slowly, long after the pipeline looks healthy.
   identifier, `ITSAppUsesNonExemptEncryption`, and the signing xcconfig block.
   All verifiable against a generated tree on any host, exactly as increment one
   was, so they do not wait on secrets or on Apple.
-- **2b — the workflow's signing and upload. Runner-only, not yet written.**
-  Keychain import of the `.p12`, provisioning-profile install, signed
-  `flutter build ipa --build-number=${{ github.run_number }}` (TestFlight
-  permanently rejects a repeated build number), and upload — behind
-  `workflow_dispatch` so it never fires on a PR. This is the part with **no
-  local proof step**: it can only fail on the runner, so expect to iterate.
+- **2b — the workflow's signing and upload. Runner-only. ✅ WORKING
+  2026-08-17.** `.github/workflows/ios-release.yml`: keychain import of the
+  `.p12`, provisioning-profile install, signed `flutter build ipa
+  --build-number=${{ github.run_number }}` (TestFlight permanently rejects a
+  repeated build number), and upload via `altool` — behind `workflow_dispatch`
+  so it never fires on a PR. First successful upload: run `32000315770`,
+  61.9 MB IPA accepted by App Store Connect.
 
 Splitting here is the same rule that put the Podfile gate on its own commit: an
 increment is bounded by what its verification can actually prove.
+
+**What 2b's three failures cost, and what they have in common.** Every one was
+a difference between this container and the runner that no local check could
+have caught — which is the entire argument for having split it out rather than
+shipping it with 2a.
+
+1. **xcconfig comments are `//`, not `#`.** `#` introduces a preprocessor
+   directive, so the managed block's delimiters archived as `unsupported
+   preprocessor directive '>>>'`. The file was written byte-for-byte as
+   intended; the intent was wrong, and no post-condition comparing output to
+   intent can catch that.
+2. **BSD vs GNU `base64`.** GNU refuses to decode raw PEM (exit 1, zero bytes),
+   which under `set -euo pipefail` would have aborted the step here. macOS's
+   BSD `base64` exited 0 and passed garbage downstream. Same command, different
+   tolerance; only the lenient one reaches a confusing error.
+3. **The API-key secret can arrive in three forms** and altool accepts one.
+   Raw PEM, base64-of-PEM, and — the trap — the `.p8`'s base64 **body** with
+   its armor lines stripped, which is valid base64 that decodes to ~150 bytes
+   of valid DER that no PEM parser will read. All three are now normalised.
+
+**The transferable lesson: prove each input before the tool that consumes it.**
+altool reads two files and reports both failures identically ("The file
+couldn't be opened because it isn't in the correct format. (259)"), naming
+neither. Adding a per-input check turned one ambiguous error into a named
+cause on the very next run. Any step that hands several artefacts to one opaque
+tool wants the same treatment.
 
 **The rule that decides what goes in which increment: an increment is bounded
 by what its verification can actually prove.** Increment one's property was
@@ -527,6 +652,56 @@ The camera half is landed and green (run on `main` @ `067cab2`).
 - **User accounts**: cloud sync for swing history across devices
 - **Sharing**: export swing reports as images or PDFs for sharing with an instructor
 - **Onboarding**: guide for recording angle, distance, lighting for best results
+
+### Product voice — the app reads like it was generated, not written (2026-08-17)
+
+Raised after seeing the shipped screens on device. The app is *accurate* and
+*honest* and still reads like documentation. It has no voice, and a golfer can
+tell. This is a real product problem, not polish.
+
+**The tells, from the shipped Record and Report screens:**
+
+- **Internal vocabulary leaks into user copy.** `NOT SEEN`, `POSSIBLE`,
+  `— informational`, `beta reference 0.13`, `0.44 torso-lengths`. These are
+  classifier states and calibration terms. No golfer thinks in torso-lengths,
+  and "NOT SEEN" is what a program says, not a person.
+- **Hedging stacked into one long sentence.** The beta banner is a 45-word
+  single sentence carrying four separate qualifications. Everything in it is
+  true. Nobody reads it.
+- **Redundancy from parallel construction.** "Possible head sway" sitting next
+  to a `POSSIBLE` badge. Every card built to the identical shape whether or not
+  the content warrants it.
+- **Explaining where it should be saying.** The banner explains the entire
+  epistemic situation instead of saying the one thing that matters: these
+  numbers are early, don't train on them yet.
+- **Labels that describe the data model, not the user's intent.** "This swing
+  is: Normal / Exaggerated", "Working on: Full swing check". Both are fields;
+  neither is a question a golfer would ask themselves.
+
+**The existing counter-example is in this repo.** `data/drills.json` reads
+well — *"Do 10 reps feeling the head stay 'quiet' over the ball"* sounds like a
+coach, because it was written for a human audience. The drill text is the proof
+the project can do this; the surrounding chrome is where it slips. Match the
+drills' register, don't invent a new one.
+
+**THE CONSTRAINT THAT MAKES THIS HARD — read before touching any copy.** The
+hedging is **load-bearing**. The beta banner, the `beta reference` values, and
+the deliberate softness of "possible" all exist because the thresholds are
+uncalibrated (see P0) and the app must not imply otherwise. A rewrite that
+makes the copy punchy by deleting the caveats converts an honest product into a
+confident wrong one, and it will look like an improvement in review.
+
+Rewrite the **voice**, preserve the **epistemics**. Concretely: every claim the
+current copy hedges must still be hedged afterwards, in fewer and better words.
+"Early numbers — we haven't checked these against real swings yet" carries the
+same meaning as the 45-word banner and is likelier to be read. If a proposed
+line drops a qualification rather than compressing it, reject it.
+
+**Sequencing.** Cheap to do, expensive to undo badly, and the fault vocabulary
+will change anyway when P0.2 recalibrates and the verdict wording follows the
+thresholds. Worth doing *after* P0.2 so the copy is written once against final
+semantics — but the Record screen and the beta banner touch no thresholds and
+can move earlier if the app goes in front of anyone.
 
 ### Practice Focus (persistent) — makes the existing focus-fault legible; fixes a real bug
 

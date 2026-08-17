@@ -29,6 +29,8 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late Participant _participant = widget.participant;
+  /// Anchors the iOS share popover to the export button.
+  final GlobalKey _exportButtonKey = GlobalKey();
   bool _exporting = false;
 
   Future<void> _setReport(String faultId, CoachConfirmation value) async {
@@ -50,10 +52,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Anchor the iOS share sheet to the export button.
+  ///
+  /// Omitting this is not a cosmetic slip: share_plus rejects a null or
+  /// zero-sized origin and the export fails outright. See
+  /// [shareOriginOrFallback].
+  Rect _shareOrigin() {
+    final box =
+        _exportButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    final fromControl = box != null && box.hasSize
+        ? box.localToGlobal(Offset.zero) & box.size
+        : null;
+    return shareOriginOrFallback(fromControl, MediaQuery.of(context).size);
+  }
+
   Future<void> _export() async {
     setState(() => _exporting = true);
     try {
-      final result = await const CorpusExporter().share();
+      final result = await const CorpusExporter().share(
+        sharePositionOrigin: _shareOrigin(),
+      );
       if (!mounted) return;
       if (result.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -137,6 +155,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: FilledButton.icon(
+              key: _exportButtonKey,
               onPressed: _exporting ? null : _export,
               icon: const Icon(Icons.ios_share),
               label: Text(_exporting ? 'Preparing…' : 'Export swing history'),

@@ -107,8 +107,20 @@ _TESTS_SUFFIX = ".RunnerTests"
 # nothing at target level to override it, project xcconfig applies cleanly — so
 # this is a whole-block write to a nearly empty file instead of surgical
 # insertion into a NeXTSTEP plist the parser cannot read.
-_SIGNING_BEGIN = "# >>> configure_ios.py managed signing block — do not edit by hand"
-_SIGNING_END = "# <<< configure_ios.py managed signing block"
+#
+# The delimiters use `//`, xcconfig's line-comment syntax. `#` is NOT a comment
+# here — it introduces a preprocessor directive, which is why the template's own
+# `#include "Generated.xcconfig"` works. A `#`-prefixed delimiter made Xcode fail
+# the archive with `unsupported preprocessor directive '>>>'`, a failure no
+# amount of reading the file back could have caught, because the file was
+# written exactly as intended and it was the intent that was wrong.
+_SIGNING_BEGIN = "// >>> configure_ios.py managed signing block - do not edit by hand"
+_SIGNING_END = "// <<< configure_ios.py managed signing block"
+
+# Only these may start with `#` in an xcconfig. Anything else is a directive
+# Xcode does not know, and it is fatal at archive time.
+_XCCONFIG_DIRECTIVE = re.compile(r"^#include\??\s", re.MULTILINE)
+_XCCONFIG_HASH_LINE = re.compile(r"^#.*$", re.MULTILINE)
 _SIGNING_BLOCK = re.compile(
     re.escape(_SIGNING_BEGIN) + r".*?" + re.escape(_SIGNING_END) + r"\n?",
     re.DOTALL,
@@ -281,6 +293,23 @@ def patch_signing(xcconfig_path: Path, team: str, profile: str, identity: str) -
         raise PatchError(
             f"{xcconfig_path}: found {len(blocks)} managed signing blocks after "
             "writing, expected exactly 1."
+        )
+
+    # Encodes the lesson that cost a CI round: every `#` line in an xcconfig is
+    # a directive, and an unrecognised one fails the archive rather than being
+    # ignored as a comment. Checked against the whole file so a hand-added `#`
+    # comment is caught here instead of inside xcodebuild.
+    bad = [
+        line
+        for line in _XCCONFIG_HASH_LINE.findall(written)
+        if not _XCCONFIG_DIRECTIVE.match(line)
+    ]
+    if bad:
+        raise PatchError(
+            f"{xcconfig_path}: {len(bad)} line(s) start with '#' but are not "
+            f"#include directives: {bad!r}. In xcconfig '#' means a preprocessor "
+            "directive, not a comment — Xcode fails the archive on unknown ones. "
+            "Use '//' for comments."
         )
 
     expected = {
