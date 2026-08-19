@@ -539,6 +539,71 @@ corpus — the spec calls for multiple subjects and repeat sessions — but the
 first real data the project has, and the export path that produced it now
 works.
 
+#### P1.4 — Swing localization: prototyped, NOT shipped, blocked on ground truth (2026-08-17)
+
+Filming yourself makes a long clip unavoidable: tripod, hit record, walk in,
+settle, swing, walk back, stop. **"Record a shorter clip" is not advice anyone
+can follow**, so P1.3's failure is a missing capability, not bad input. Remove
+that framing from any user-facing guidance.
+
+**The body-speed structure is real and clean.** Speed of the shoulder/hip
+midpoint, one character per second, `#`>8 `+`>3 `.`>1 torso-lengths/s:
+
+```
+nothing  |######|                 walk only, never settles
+swing 1  |######++.++.+###|       walk in | settle+swing | walk back
+swing 2  |#####+..++.+####|
+swing 3  |#####+...++.+####|
+swing 4  |#####+.+...+.++####|
+```
+
+**Trimming to the quiet middle is not enough.** It produces the right window
+(~5-13 s) and tempo stays inverted, because 8 s is still 5x a swing and
+`top = first peak clearing half the range` keeps catching an early hand raise.
+
+**Anchoring on the downswing works much better.** A swing's signature is the
+fastest downward wrist motion, not a tall peak. `locate_swing()` in
+`src/swing_phases.py` does this and puts the events *inside* the swing on all
+five recordings instead of at frame 1. Tempo ratios came out 3.00 / 2.42 /
+3.93 / 2.00 in one prototype — the right order of magnitude for real golfers.
+
+**It is not shipped, and here is why.** The answer moves with the smoothing
+constant. At `DESCENT_SMOOTH_S` 0.05 s one clip anchors at frame 447; at 0.10 s
+the same clip anchors at 272 — six seconds apart. A constant that swings the
+answer that far is doing real work, which falsifies the "no calibration debt"
+claim its neighbours can make honestly. Two different smoothing choices gave
+tempo sets of 3.00/2.42/3.93/2.00 and 1.10/1.93/4.00/2.78, and **the only
+reason to prefer the first is that it looks more like golf** — which is
+eyeball calibration, the thing P0 exists to prevent.
+
+**Why the ambiguity is real, not a tuning failure.** Counting distinct wrist
+drops (>=50% of the largest, >=1 s apart) per clip: **4, 4, 4, 5 events — and
+only one clip has a dominant one** (4.07 torso-lengths against ~1.3 for the
+rest). Practice swings, waggles and setting down the club all produce drops
+comparable to the swing. Choosing among them needs to know which one the
+golfer meant.
+
+**A hypothesis worth recording as refuted:** the missing pose frames are *not*
+in the swing. Coverage during the swing region is 0.80-0.89, *higher* than the
+0.61-0.81 overall; the gaps (up to 3.9 s) are in the walk-in, before the
+golfer is in frame. Motion blur at 30 fps is not the problem here.
+
+**What unblocks this: labels, and they are cheap.** Watching the five clips and
+noting the second at which each swing happens converts every question above
+from taste into measurement. Without it, any localizer is tuned to look right.
+The natural product form is a scrubber on the report — "was this the swing?" —
+which collects labels as a side effect of use, and is the same UI that would
+serve as a manual-trim fallback.
+
+**State of the code.** `locate_swing()` is committed, documented as
+unvalidated, and reachable only by passing `torso=` to `detect_phases`. Nothing
+in the app passes it, so behaviour is unchanged. The five recordings are
+committed as `tests/fixtures/device_corpus_2026_08_17.jsonl` with
+characterization tests that assert only what the data supports: the events are
+ordered and inside the clip, and they land later than peak localization's. The
+frame numbers are deliberately not pinned — a test asserting them would look
+like evidence they are right.
+
 **iOS compile gate (added 2026-08-04)** — `.github/workflows/ios-build.yml`
 builds iOS unsigned on a GitHub Actions `macos-latest` runner, so iOS
 compilation is verified from Windows without Apple hardware.

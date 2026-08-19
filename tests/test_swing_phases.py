@@ -122,3 +122,68 @@ DEVICE_PHASES_2026_08_17 = [
 @pytest.mark.parametrize('phases', DEVICE_PHASES_2026_08_17)
 def test_implausible_swing_accepts_real_device_recordings(phases):
     assert implausible_swing(phases) is None
+
+
+# --- P1.4: characterization of locate_swing against real device data ---------
+# Pins CURRENT behaviour on the five real recordings so any change to
+# locate_swing is visible in a diff. These are NOT assertions that the values
+# are correct -- nobody has labelled where the swings actually are. See P1.4.
+
+import os
+
+FIXTURE = os.path.join(os.path.dirname(__file__), 'fixtures',
+                       'device_corpus_2026_08_17.jsonl')
+
+
+def _device_recordings():
+    import json
+    out = []
+    with open(FIXTURE) as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            if rec.get('record') == 'header':
+                continue
+            out.append(rec)
+    return out
+
+
+def test_locate_swing_places_events_inside_the_clip():
+    """The weakest claim that is actually true: events are ordered and in range.
+
+    Deliberately not pinning frame numbers. The values are unvalidated, and a
+    test asserting them would look like evidence they are right.
+    """
+    from swing_phases import locate_swing
+    for rec in _device_recordings():
+        frames = rec['frames']
+        wrist = [float('nan') if v is None else v for v in frames['wrist_y']]
+        torso = [float('nan') if v is None else v for v in frames['torso']]
+        phases = locate_swing(wrist, torso, rec['fps'])
+        assert phases is not None
+        n = len(wrist)
+        assert 0 <= phases['takeaway'] <= phases['top'] <= phases['impact'] \
+            <= phases['finish'] < n
+
+
+def test_locate_swing_beats_peak_localization_on_real_clips():
+    """The one comparative claim the data does support.
+
+    Peak-based localization put `top` in the first half-second of 15-18 second
+    clips (frames 1, 4, 8, 15). Anchoring on the downswing does not.
+    """
+    from swing_phases import detect_phases, locate_swing
+    for rec in _device_recordings()[1:]:  # skip the clip of nothing
+        frames = rec['frames']
+        wrist = [float('nan') if v is None else v for v in frames['wrist_y']]
+        torso = [float('nan') if v is None else v for v in frames['torso']]
+        fps = rec['fps']
+        peak_top = detect_phases(wrist, fps=fps)['top']
+        located_top = locate_swing(wrist, torso, fps)['top']
+        # Peak localization lands in the opening seconds of a 15-18 s clip
+        # (frames 1, 15, 130, 8 across the four); downswing anchoring lands
+        # hundreds of frames later. Assert only the ordering: WHERE the swing
+        # truly is remains unlabelled, so "later" is the strongest honest claim.
+        assert located_top > peak_top, (
+            f'peak_top={peak_top} located_top={located_top}')
