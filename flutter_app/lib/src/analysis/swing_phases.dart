@@ -148,6 +148,30 @@ class SwingTempo {
   });
 }
 
+/// How precisely the tempo ratio is pinned down, given that both phases are
+/// counted in whole frames.
+///
+/// Returns the half-width of the ratio's uncertainty: the events are located
+/// to the nearest frame, so each duration carries about one frame of slack,
+/// and the relative error in a quotient is the sum of the relative errors in
+/// its terms — `(1/backswing + 1/downswing) * ratio`. Returns null when the
+/// ratio does not exist.
+///
+/// **This introduces no constant and borrows nothing from P0.1.** It is the
+/// arithmetic of counting in frames, not a judgement about golf. That matters
+/// because the hedge it feeds used to be keyed on frame RATE — below 120 fps
+/// the report always claimed "the downswing spans only a few frames", which on
+/// the first real device report was said of a 58-frame downswing. A hedge that
+/// describes a condition that is not true spends credibility exactly where the
+/// golfer most needs to trust the number. See P1.1 in ROADMAP.md.
+double? tempoRatioPrecision(SwingTempo? tempo) {
+  if (tempo == null) return null;
+  final b = tempo.backswingFrames;
+  final d = tempo.downswingFrames;
+  if (b <= 0 || d <= 0 || !tempo.ratio.isFinite) return null;
+  return (1.0 / b + 1.0 / d) * tempo.ratio;
+}
+
 /// Compute backswing/downswing durations and their tempo ratio.
 ///
 /// Direct port of `swing_tempo`. Backswing = takeaway → top, downswing =

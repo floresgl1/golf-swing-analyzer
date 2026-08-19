@@ -460,12 +460,42 @@ Do **not** let this become a back door for guessed fault thresholds. The gate
 answers presence, not severity; if a proposed check needs a number that only
 the corpus can supply, it belongs in P0.2, not here.
 
-**Related defect — the tempo caveat is keyed on the wrong variable.**
-`report_screen.dart`'s `_tempoCaveat` branches on **fps alone**, so below 120 fps
-it always prints "the downswing spans only a few frames". On this report the
-detected downswing was **58 frames**. The hedge describes a condition that is
+**Related defect — the tempo caveat was keyed on the wrong variable. FIXED 2026-08-19.**
+`report_screen.dart`'s `_tempoCaveat` branched on **fps alone**, so below 120 fps
+it always printed "the downswing spans only a few frames". On this report the
+detected downswing was **58 frames**. The hedge described a condition that was
 not true, which spends credibility exactly where the user most needs to trust
-it. It should key on the detected frame counts, not the capture rate.
+it.
+
+It now keys on the frames the phases actually span, and rather than grading the
+swing against an invented cutoff it **states the precision it has**:
+`tempoRatioPrecision()` in `swing_phases.dart` returns
+`(1/backswing + 1/downswing) * ratio` — the events are located to the nearest
+frame, so each duration carries about a frame of slack, and relative errors add
+across a quotient. **No constant, and nothing borrowed from P0.1:** this is the
+arithmetic of counting in frames, not a judgement about golf.
+
+What the golfer now reads:
+
+```
+device 2026-08-17 (6 up, 58 down, 30fps)   ... within about 0.02 either way.
+a real swing      (27 up, 9 down, 30fps)   ... within about 0.4 either way.
+a 240fps swing    (216 up, 72 down)        ... within about 0.06 either way.
+```
+
+The middle row is the case the old hedge was reaching for and never actually
+detected; the first is the case it got wrong. Note the ordering is not by frame
+rate — the 30fps swing with a real downswing is the *least* precise of the
+three, which is exactly why keying on fps could not work.
+
+The number is printed at whatever precision it actually has and is never
+rounded up to a friendlier figure. A first draft of this clamped anything under
+0.1 up to "0.1"; overstating uncertainty is a smaller lie than understating it,
+but it is still a lie, and it was removed before commit.
+
+App-only: Python prints full verdicts and has no equivalent hedge, so there is
+nothing to port and this is not a parity divergence. Verified by mutating the
+precision formula three ways — all three go red.
 
 **What did work**, and is worth not re-testing: the camera permission prompt
 appeared with its usage string (the failure no compile check could catch, and
