@@ -371,7 +371,38 @@ The two directions are not symmetric, and the file says so: **any downward move 
 
 **Incidental finding, not fixed:** three of the four detectors return a numpy bool for `flagged` and one returns a Python bool, so `is True` fails on three of them. The tests cast with `bool()`; the inconsistency in `src/faults.py` is left alone rather than changed under an unrelated commit.
 
-**Still open in P0.4:** only `tests/test_faults.py` was rewritten. `faults.py:139`'s `hip_fin >= hip_addr` tie-break — the one place equality resolves to the positive side, and the thing that decides which way "toward target" points — is still unverified, and `_fold`'s ±90 boundary (Architecture Notes) is still untested. Both are equality-convention gaps of the same family.
+**The Dart side had the same defect, weaker but real — audited and FIXED 2026-08-19.** The note calling `flutter_app/test/faults_test.dart` "already structurally correct, and the model to copy" was right about *form* and wrong about *strength*. Its probes were absolute, which is the part worth copying. But:
+
+- **Every probe sat far from its boundary.** Sway was probed at 0.20 and 0.05 against a threshold of 0.13, so the constant could move anywhere in `(0.05, 0.20)` — a band 58% as wide as the constant itself — with the suite green. Confirmed by mutation: `swayThreshold` 0.13 → 0.18 was invisible.
+- **Only sway had a below-threshold probe at all.** Early extension, loss of posture and reverse pivot had flag-true cases only, so a threshold moved *down* to zero would still have passed.
+- **No on-boundary case anywhere**, the same equality gap the Python side had.
+- **One derived assertion survived:** `expect(r.reverse, greaterThan(reversePivotThreshold))` — the vacuous form, true for any threshold below the probe.
+- **`dipThreshold` was untested here too.**
+
+Rewritten to the same shape as the Python file — four probes per detector, thresholds named only in comments — and verified the same way, by mutating each of the five constants and re-running `flutter test`:
+
+```
+                       sway  dip  reverse  early-ext  posture
+downward, 1 ULP        RED   RED  RED      RED        RED
+upward, +0.0001        RED   ***  RED      RED        ***
+upward, +0.005 .. 2x   RED    -    -       RED        RED
+old blind spot (0.18)  RED    -    -        -          -
+```
+
+97 Dart tests pass; `flutter analyze` is clean on the file.
+
+Not a parity divergence to reconcile: probe values are test inputs, not detector constants, so the byte-parallel rule does not apply. The two suites agree on discipline, not on numbers.
+
+**A real (if tiny) numerical divergence surfaced while doing it.** The degenerate `***` case lands on *different detectors* in each language — Python is blind at early extension and catches posture; Dart is the reverse. Cause: Python computes `math.degrees(x)`, Dart computes `x * 180.0 / math.pi`, and the two round differently in the last place. Measured at a 12.001-degree tilt:
+
+```
+python  straighten = 12.001
+dart    straighten = 12.001000000000001
+```
+
+One ULP. It cannot change a verdict on any real swing — a golfer's spine angle is not measured to 15 significant figures — so this is recorded rather than fixed, so that the parity checker does not flag it as drift and a future session does not rediscover it.
+
+**Still open in P0.4:** `faults.py:139`'s `hip_fin >= hip_addr` tie-break — the one place equality resolves to the positive side, and the thing that decides which way "toward target" points — is still unverified, and `_fold`'s ±90 boundary (Architecture Notes) is still untested. Both are equality-convention gaps of the same family.
 
 ### P1 — Flutter Device Testing
 **Status**: In progress — app installed via TestFlight 2026-08-17, first finding below
