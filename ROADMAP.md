@@ -300,7 +300,7 @@ Why blocked: step 2 has no ground truth without the corpus. Doing step 1 alone s
 - Remaining seam: `main()` still uses container fps and pins windowing to `BASELINE_FPS`. When P0.1 lands a `capture_fps` metadata field per video (defaulting to `CAP_PROP_FPS` when they agree), thread it into `detect_phases`/detectors — that is the point where slow-mo vs real-time stops being a hidden variable.
 - **Left-handed golfers**: `HANDEDNESS` is a module constant with no per-run override — lefties are analyzed on the trail wrist (garbage phases). Parameterize before admitting lefties to the corpus.
 
-#### P0.4 — The Python threshold tests are vacuous — audit before recalibrating (2026-07-31)
+#### P0.4 — The Python threshold tests were vacuous — FIXED 2026-08-19
 
 **`tests/test_faults.py` cannot detect a threshold change. This is measured, not suspected.** All four constants were mutated at once — `SWAY_THRESHOLD` 0.13→0.20, `REVERSE_PIVOT_THRESHOLD` 0.12→0.30, `EARLY_EXTENSION_THRESHOLD` 0.10→0.40, `POSTURE_THRESHOLD` 12.0→30.0, i.e. up to **3×** — and the suite stayed green:
 
@@ -346,6 +346,63 @@ So a metric exactly at its threshold is specified as **not** flagged, and an ang
 The `>=` comparisons elsewhere in `src/` are a different kind and are not counter-examples: they are tie-breaks and bounds guards (`faults.py:139` `hip_fin >= hip_addr` resolving the static-hip tie to `+1.0`, `faults.py:348` `len(path) >= 2`, the `swing_phases.py` fps/window guards), not verdicts. The `faults.py:139` tie-break is the one place equality is deliberately resolved to the positive side, and it is itself unverified — confirm it is intended when recalibrating, because it decides which way "toward target" points.
 
 **Method, for whoever redoes this audit:** mutate a constant in `src/faults.py`, run pytest, confirm the suite goes red, restore the constant. If it stays green, the test is vacuous. This same property was independently reproduced in a generated characterization file during a sub-agent probe; that file was deleted and the finding above rests on `tests/test_faults.py` alone, which predates it.
+
+**FIXED 2026-08-19.** `tests/test_faults.py` no longer imports the thresholds at all. Each detector is probed with a table of absolute values written out by hand — clearly below, exactly on the boundary, a hair above, clearly above — and the constant it straddles is named only in a comment.
+
+**The vacuity was worse than recorded before it was fixed.** The note above claims `tests/test_faults.py` stayed green under mutation. Re-run on 2026-08-19 with all four constants mutated at once: **the entire suite, 81 tests, stayed green.** No test anywhere in `tests/` could see a 3× threshold change.
+
+**Verified by mutation, one constant at a time** — the step the old file never had. Each threshold was moved and `tests/test_faults.py` re-run:
+
+```
+                       sway  dip  reverse  early-ext  posture
+downward, 1 ULP        RED   RED  RED      RED        RED
+upward, +0.0001        RED   ***  RED      ***        RED
+upward, +0.005         RED   RED  RED      RED        RED
+upward, 1.5-2.5x       RED    -    -        -         RED
+```
+
+The two directions are not symmetric, and the file says so: **any downward move is caught immediately** by the on-boundary probe, because the boundary value starts flagging. An **upward** move is only caught once it clears the nearest above-probe, so probe spacing is the resolution — the suite pins each boundary to within 0.0001, which is a bound, not a guarantee of zero.
+
+`***` marks the one degenerate case, recorded so it is not rediscovered as a bug: moving a threshold to land **exactly** on the hair-above probe value — `EARLY_EXTENSION_THRESHOLD` to 0.1001, `DIP_THRESHOLD` to 0.2501 — stays green, because whether the computed metric compares greater than it is then decided by floating-point rounding inside the detector. The other three go red at the same offset. Anywhere off a probe value the bound holds.
+
+**`DIP_THRESHOLD` had no test of any kind** and is the fifth threshold in `src/faults.py` — the audit above only ever counted four. It is informational rather than a verdict (`flagged` keys on sway alone) but is still printed, so a wrong constant is still a wrong claim shown to a golfer. It now has the same four probes as the rest, plus an assertion that a dip never sets the head-movement fault.
+
+**The equality convention is now tested.** The note below observes that nothing anywhere tested exact equality, which is the one input where a strict-vs-inclusive slip is invisible. Each detector now has an on-boundary probe asserting the value **exactly** (`== 0.13`, not `approx`) and asserting it does not flag. All four probe values divide exactly in IEEE double — 13/100, 12/100, 10/100, and `degrees(atan2(·, 100))` round-tripping 12.0 — so these are exact comparisons, not near-misses.
+
+**Incidental finding, not fixed:** three of the four detectors return a numpy bool for `flagged` and one returns a Python bool, so `is True` fails on three of them. The tests cast with `bool()`; the inconsistency in `src/faults.py` is left alone rather than changed under an unrelated commit.
+
+**The Dart side had the same defect, weaker but real — audited and FIXED 2026-08-19.** The note calling `flutter_app/test/faults_test.dart` "already structurally correct, and the model to copy" was right about *form* and wrong about *strength*. Its probes were absolute, which is the part worth copying. But:
+
+- **Every probe sat far from its boundary.** Sway was probed at 0.20 and 0.05 against a threshold of 0.13, so the constant could move anywhere in `(0.05, 0.20)` — a band 58% as wide as the constant itself — with the suite green. Confirmed by mutation: `swayThreshold` 0.13 → 0.18 was invisible.
+- **Only sway had a below-threshold probe at all.** Early extension, loss of posture and reverse pivot had flag-true cases only, so a threshold moved *down* to zero would still have passed.
+- **No on-boundary case anywhere**, the same equality gap the Python side had.
+- **One derived assertion survived:** `expect(r.reverse, greaterThan(reversePivotThreshold))` — the vacuous form, true for any threshold below the probe.
+- **`dipThreshold` was untested here too.**
+
+Rewritten to the same shape as the Python file — four probes per detector, thresholds named only in comments — and verified the same way, by mutating each of the five constants and re-running `flutter test`:
+
+```
+                       sway  dip  reverse  early-ext  posture
+downward, 1 ULP        RED   RED  RED      RED        RED
+upward, +0.0001        RED   ***  RED      RED        ***
+upward, +0.005 .. 2x   RED    -    -       RED        RED
+old blind spot (0.18)  RED    -    -        -          -
+```
+
+97 Dart tests pass; `flutter analyze` is clean on the file.
+
+Not a parity divergence to reconcile: probe values are test inputs, not detector constants, so the byte-parallel rule does not apply. The two suites agree on discipline, not on numbers.
+
+**A real (if tiny) numerical divergence surfaced while doing it.** The degenerate `***` case lands on *different detectors* in each language — Python is blind at early extension and catches posture; Dart is the reverse. Cause: Python computes `math.degrees(x)`, Dart computes `x * 180.0 / math.pi`, and the two round differently in the last place. Measured at a 12.001-degree tilt:
+
+```
+python  straighten = 12.001
+dart    straighten = 12.001000000000001
+```
+
+One ULP. It cannot change a verdict on any real swing — a golfer's spine angle is not measured to 15 significant figures — so this is recorded rather than fixed, so that the parity checker does not flag it as drift and a future session does not rediscover it.
+
+**Still open in P0.4:** `faults.py:139`'s `hip_fin >= hip_addr` tie-break — the one place equality resolves to the positive side, and the thing that decides which way "toward target" points — is still unverified, and `_fold`'s ±90 boundary (Architecture Notes) is still untested. Both are equality-convention gaps of the same family.
 
 ### P1 — Flutter Device Testing
 **Status**: In progress — app installed via TestFlight 2026-08-17, first finding below
@@ -403,12 +460,42 @@ Do **not** let this become a back door for guessed fault thresholds. The gate
 answers presence, not severity; if a proposed check needs a number that only
 the corpus can supply, it belongs in P0.2, not here.
 
-**Related defect — the tempo caveat is keyed on the wrong variable.**
-`report_screen.dart`'s `_tempoCaveat` branches on **fps alone**, so below 120 fps
-it always prints "the downswing spans only a few frames". On this report the
-detected downswing was **58 frames**. The hedge describes a condition that is
+**Related defect — the tempo caveat was keyed on the wrong variable. FIXED 2026-08-19.**
+`report_screen.dart`'s `_tempoCaveat` branched on **fps alone**, so below 120 fps
+it always printed "the downswing spans only a few frames". On this report the
+detected downswing was **58 frames**. The hedge described a condition that was
 not true, which spends credibility exactly where the user most needs to trust
-it. It should key on the detected frame counts, not the capture rate.
+it.
+
+It now keys on the frames the phases actually span, and rather than grading the
+swing against an invented cutoff it **states the precision it has**:
+`tempoRatioPrecision()` in `swing_phases.dart` returns
+`(1/backswing + 1/downswing) * ratio` — the events are located to the nearest
+frame, so each duration carries about a frame of slack, and relative errors add
+across a quotient. **No constant, and nothing borrowed from P0.1:** this is the
+arithmetic of counting in frames, not a judgement about golf.
+
+What the golfer now reads:
+
+```
+device 2026-08-17 (6 up, 58 down, 30fps)   ... within about 0.02 either way.
+a real swing      (27 up, 9 down, 30fps)   ... within about 0.4 either way.
+a 240fps swing    (216 up, 72 down)        ... within about 0.06 either way.
+```
+
+The middle row is the case the old hedge was reaching for and never actually
+detected; the first is the case it got wrong. Note the ordering is not by frame
+rate — the 30fps swing with a real downswing is the *least* precise of the
+three, which is exactly why keying on fps could not work.
+
+The number is printed at whatever precision it actually has and is never
+rounded up to a friendlier figure. A first draft of this clamped anything under
+0.1 up to "0.1"; overstating uncertainty is a smaller lie than understating it,
+but it is still a lie, and it was removed before commit.
+
+App-only: Python prints full verdicts and has no equivalent hedge, so there is
+nothing to port and this is not a parity divergence. Verified by mutating the
+precision formula three ways — all three go red.
 
 **What did work**, and is worth not re-testing: the camera permission prompt
 appeared with its usage string (the failure no compile check could catch, and
@@ -588,12 +675,53 @@ in the swing. Coverage during the swing region is 0.80-0.89, *higher* than the
 0.61-0.81 overall; the gaps (up to 3.9 s) are in the walk-in, before the
 golfer is in frame. Motion blur at 30 fps is not the problem here.
 
-**What unblocks this: labels, and they are cheap.** Watching the five clips and
-noting the second at which each swing happens converts every question above
-from taste into measurement. Without it, any localizer is tuned to look right.
-The natural product form is a scrubber on the report — "was this the swing?" —
-which collects labels as a side effect of use, and is the same UI that would
-serve as a manual-trim fallback.
+**What unblocks this: labels, and they are cheap.** Noting the second at which
+each swing happens converts every question above from taste into measurement.
+Without it, any localizer is tuned to look right. The natural product form is a
+scrubber on the report — "was this the swing?" — which collects labels as a
+side effect of use, and is the same UI that would serve as a manual-trim
+fallback.
+
+**The obvious way to get those labels is not available: the clips are gone.**
+`record_screen.dart` hands `stopVideoRecording()`'s path straight to the
+analyzer and keeps no copy; nothing writes the video into the app's Documents
+directory, so the `UIFileSharingEnabled` route added for the corpus export
+cannot see it; and the file sits in the app's temp directory, which iOS
+reclaims. **The five recordings of 2026-08-17 cannot be rewatched.** Anything
+that wants video ground truth has to retain the video first — a product
+decision (storage, deletion, consent) that is not made yet.
+
+**They can still be labelled, from the data instead of the video.**
+`validation/device_corpus/label_sheet.py` renders one sheet per recording from
+the committed per-frame series: wrist/shoulder/hip in image pixels with the
+axis inverted and the y-range clipped to where the body actually is, wrist
+height above the hips in torso lengths (which removes the golfer walking
+toward a fixed camera), and a track of which frames had a pose at all. The
+swing reads off the normalized panel unmistakably — a rise to ~1.5 torso
+lengths, a drop through the hips, a follow-through peak — against an address
+that holds flat near 0. The nothing-clip has no such excursion anywhere, so it
+labels as a genuine negative for P1.1. Labels go in
+`validation/device_corpus/labels.json` (`--write-template` writes the empty
+slots), `null` where the labeller cannot tell.
+
+The sheet deliberately does **not** draw `locate_swing()`'s answer on itself.
+That answer is what the labels exist to judge; showing it to the labeller
+would contaminate the ground truth with the hypothesis.
+
+**What the current shipped detector does on these clips**, for scale — the
+swing in recording 1 is around 9.5-11.5 s and in recording 4 around 11-13 s:
+
+```
+             takeaway      top       impact     finish     clip
+nothing      0.0 s        0.2 s      2.1 s      4.5 s      5.6 s
+swing 1      1.1 s        3.6 s     14.8 s     15.2 s     16.0 s
+swing 2      0.0 s        0.5 s      2.4 s     13.8 s     15.4 s
+swing 3      0.0 s        4.3 s      7.2 s     15.8 s     16.3 s
+swing 4      0.0 s        0.2 s     17.6 s     18.1 s     18.5 s
+```
+
+Every one of them anchors in the walk-in, not the swing. This is P1.3 stated in
+seconds rather than in frame indices.
 
 **State of the code.** `locate_swing()` is committed, documented as
 unvalidated, and reachable only by passing `torso=` to `detect_phases`. Nothing
@@ -603,6 +731,19 @@ characterization tests that assert only what the data supports: the events are
 ordered and inside the clip, and they land later than peak localization's. The
 frame numbers are deliberately not pinned — a test asserting them would look
 like evidence they are right.
+
+**The app's name did not match its store listing — FIXED 2026-08-19.** Measured
+against the pinned SDK rather than assumed: `flutter create --project-name
+golf_swing_analyzer` writes `CFBundleDisplayName` "Golf Swing Analyzer" and
+`CFBundleName` "golf_swing_analyzer", while the App Store listing is **Fore
+Swing**. A tester installing from TestFlight would have found an icon whose name
+did not match what they tapped to get it. `configure_ios.py` now patches both
+keys (the generated `CFBundleName` is also past Apple's 15-character guidance).
+
+Deliberately **not** renamed: `main.dart`'s `MaterialApp` title, still "Golf
+Swing Analyzer". That is user-facing copy, and it belongs to the product-voice
+pass below rather than to a plist patcher — renaming it here would scatter the
+voice work across commits that are not about voice.
 
 **iOS compile gate (added 2026-08-04)** — `.github/workflows/ios-build.yml`
 builds iOS unsigned on a GitHub Actions `macos-latest` runner, so iOS

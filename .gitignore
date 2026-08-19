@@ -25,6 +25,7 @@ validation/golfdb/download.py
 # Generated validation artifacts (regenerable by the harness scripts)
 validation/golfdb/phase_results.csv
 validation/golfdb/spotcheck_wrist.png
+validation/device_corpus/sheets/
 
 # OS files
 .DS_Store

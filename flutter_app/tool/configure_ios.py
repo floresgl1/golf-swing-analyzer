@@ -54,6 +54,24 @@ CAMERA_USAGE_DESCRIPTION = "Record your golf swing so the app can analyze it."
 # alphanumerics, hyphens and periods, and an App ID cannot be renamed once made.
 BUNDLE_ID = "io.github.floresgl1.golfSwingAnalyzer"
 
+# The name under the icon on the home screen, and the short name iOS shows in
+# Settings and the app switcher. Both are patched because `flutter create`
+# derives them from the package name and gets a different answer than the App
+# Store listing: measured against the pinned SDK, the generated plist carries
+# CFBundleDisplayName "Golf Swing Analyzer" and CFBundleName
+# "golf_swing_analyzer", while the app is listed as "Fore Swing". A golfer who
+# installs from TestFlight would find an icon that does not match the name they
+# tapped to get it. CFBundleName is also over Apple's 15-character guidance in
+# its generated form.
+#
+# The in-app strings are deliberately NOT renamed here — `main.dart`'s
+# MaterialApp title still reads "Golf Swing Analyzer". That is user-facing copy
+# and belongs to the product-voice pass (see User Experience in ROADMAP.md),
+# not to a plist patcher.
+DISPLAY_NAME_KEY = "CFBundleDisplayName"
+BUNDLE_NAME_KEY = "CFBundleName"
+APP_DISPLAY_NAME = "Fore Swing"
+
 # TestFlight asks an export-compliance question on every build unless the answer
 # is declared here. False is a statement that the app uses no non-exempt
 # encryption: it ships no custom cryptography, and HTTPS/ML Kit are exempt.
@@ -188,7 +206,7 @@ def xcode_generates_podfiles() -> bool:
 
 
 def patch_info_plist(plist_path: Path) -> None:
-    """Set the camera usage description, then prove it is there."""
+    """Set the Info.plist keys the app needs, then prove they are there."""
     try:
         with plist_path.open("rb") as handle:
             plist = plistlib.load(handle)
@@ -209,6 +227,8 @@ def patch_info_plist(plist_path: Path) -> None:
         ENCRYPTION_KEY: False,
         FILE_SHARING_KEY: True,
         DOCS_IN_PLACE_KEY: True,
+        DISPLAY_NAME_KEY: APP_DISPLAY_NAME,
+        BUNDLE_NAME_KEY: APP_DISPLAY_NAME,
     }
     plist.update(wanted)
 
@@ -516,6 +536,7 @@ def main(argv: list[str]) -> int:
     print(
         f"ios: {CAMERA_KEY} set; {ENCRYPTION_KEY}=false; "
         f"{FILE_SHARING_KEY}/{DOCS_IN_PLACE_KEY}=true; "
+        f"app name {APP_DISPLAY_NAME!r}; "
         f"deployment target {DEPLOYMENT_TARGET} in every build configuration "
         f"{podfile_state}"
     )

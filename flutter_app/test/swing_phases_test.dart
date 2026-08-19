@@ -113,4 +113,48 @@ void main() {
       test(label, () => expect(implausibleSwing(phases), isNull));
     });
   });
+
+  group('tempoRatioPrecision', () {
+    // Both phases are counted in whole frames, so the ratio is only pinned
+    // down to (1/backswing + 1/downswing) * ratio. No constant, no calibration
+    // debt -- this is the arithmetic of counting, not a claim about golf.
+
+    test('null when there is no tempo', () {
+      expect(tempoRatioPrecision(null), isNull);
+    });
+
+    test('null when a phase has no duration', () {
+      const zeroDown = SwingPhases(takeaway: 0, top: 10, impact: 10, finish: 20);
+      expect(tempoRatioPrecision(swingTempo(zeroDown, 30)), isNull);
+    });
+
+    test('a long swing is pinned down tightly', () {
+      // 90 frames up, 30 down at 240fps: ratio 3.0, precision 0.13.
+      const phases = SwingPhases(takeaway: 0, top: 90, impact: 120, finish: 150);
+      final tempo = swingTempo(phases, 240)!;
+      expect(tempo.ratio, closeTo(3.0, 1e-9));
+      expect(tempoRatioPrecision(tempo), closeTo(0.133, 1e-3));
+    });
+
+    test('a short downswing is pinned down loosely', () {
+      // 9 frames up, 3 down at 30fps: same 3.0 ratio, 4x the uncertainty.
+      const phases = SwingPhases(takeaway: 0, top: 9, impact: 12, finish: 20);
+      final tempo = swingTempo(phases, 30)!;
+      expect(tempo.ratio, closeTo(3.0, 1e-9));
+      expect(tempoRatioPrecision(tempo), closeTo(1.333, 1e-3));
+    });
+
+    test('the device report that produced the false hedge is pinned tightly',
+        () {
+      // Device 2026-08-17, 30fps: the report told the golfer their downswing
+      // "spans only a few frames" while the detector had put 58 in it. Frame
+      // rate is not what decides this -- the counts are.
+      const phases = SwingPhases(takeaway: 0, top: 6, impact: 64, finish: 136);
+      final tempo = swingTempo(phases, 29.97)!;
+      final precision = tempoRatioPrecision(tempo)!;
+      expect(tempo.downswingFrames, 58);
+      expect(precision, lessThan(0.05));
+    });
+  });
+
 }

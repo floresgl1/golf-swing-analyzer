@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../analysis/swing_history.dart';
+import '../analysis/swing_phases.dart';
 import '../analysis/swing_history_store.dart';
 import '../models/swing_analysis.dart';
 import 'widgets/drill_tile.dart';
@@ -177,7 +178,7 @@ class _TempoSummary extends StatelessWidget {
               // two on where impact lands moves the ratio across most of the
               // range that would make the comparison meaningful.
               Text(
-                _tempoCaveat(analysis.fps),
+                _tempoCaveat(tempo, analysis.fps),
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.outline,
                     ),
@@ -195,19 +196,27 @@ class _TempoSummary extends StatelessWidget {
   }
 }
 
-/// How much to trust the tempo ratio at the rate this swing was captured.
+/// How much to trust the tempo ratio on this particular swing.
 ///
-/// Below roughly 120 fps the downswing spans too few frames for the ratio to be
-/// worth comparing against anything, so the report says so instead of printing
-/// a benchmark beside it.
-String _tempoCaveat(double fps) {
-  if (fps >= 120) {
-    return 'Timing precision depends on frame rate; this swing was captured at '
-        '${fps.toStringAsFixed(0)} fps.';
-  }
-  return 'At ${fps.toStringAsFixed(0)} fps the downswing spans only a few '
-      'frames, so this ratio is rough — not precise enough to compare against '
-      'a target.';
+/// Keyed on the frames the phases actually span, not on the capture rate. The
+/// previous version branched on fps alone and so told a golfer their downswing
+/// "spans only a few frames" when the detector had put 58 frames in it — a
+/// hedge about a condition that was not true. Frame rate only matters here
+/// through the counts it produces, so the counts are what this reads.
+String _tempoCaveat(SwingTempo? tempo, double fps) {
+  final rate = 'Captured at ${fps.toStringAsFixed(0)} fps.';
+  final precision = tempoRatioPrecision(tempo);
+  if (tempo == null || precision == null) return rate;
+
+  // Events are located to the nearest frame, so the ratio is only pinned down
+  // to within `precision`. Saying that number is more use than grading it —
+  // and it is printed at whatever precision it actually has, never rounded up
+  // to a friendlier-looking figure. Overstating the uncertainty is a smaller
+  // lie than understating it, but it is still a lie.
+  final window = precision.toStringAsFixed(precision < 0.1 ? 2 : 1);
+  return '$rate Timing is measured to the nearest frame — with '
+      '${tempo.backswingFrames} frames up and ${tempo.downswingFrames} down, '
+      'that puts this ratio within about $window either way.';
 }
 
 class _SectionHeader extends StatelessWidget {
