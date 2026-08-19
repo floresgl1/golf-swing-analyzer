@@ -588,12 +588,53 @@ in the swing. Coverage during the swing region is 0.80-0.89, *higher* than the
 0.61-0.81 overall; the gaps (up to 3.9 s) are in the walk-in, before the
 golfer is in frame. Motion blur at 30 fps is not the problem here.
 
-**What unblocks this: labels, and they are cheap.** Watching the five clips and
-noting the second at which each swing happens converts every question above
-from taste into measurement. Without it, any localizer is tuned to look right.
-The natural product form is a scrubber on the report — "was this the swing?" —
-which collects labels as a side effect of use, and is the same UI that would
-serve as a manual-trim fallback.
+**What unblocks this: labels, and they are cheap.** Noting the second at which
+each swing happens converts every question above from taste into measurement.
+Without it, any localizer is tuned to look right. The natural product form is a
+scrubber on the report — "was this the swing?" — which collects labels as a
+side effect of use, and is the same UI that would serve as a manual-trim
+fallback.
+
+**The obvious way to get those labels is not available: the clips are gone.**
+`record_screen.dart` hands `stopVideoRecording()`'s path straight to the
+analyzer and keeps no copy; nothing writes the video into the app's Documents
+directory, so the `UIFileSharingEnabled` route added for the corpus export
+cannot see it; and the file sits in the app's temp directory, which iOS
+reclaims. **The five recordings of 2026-08-17 cannot be rewatched.** Anything
+that wants video ground truth has to retain the video first — a product
+decision (storage, deletion, consent) that is not made yet.
+
+**They can still be labelled, from the data instead of the video.**
+`validation/device_corpus/label_sheet.py` renders one sheet per recording from
+the committed per-frame series: wrist/shoulder/hip in image pixels with the
+axis inverted and the y-range clipped to where the body actually is, wrist
+height above the hips in torso lengths (which removes the golfer walking
+toward a fixed camera), and a track of which frames had a pose at all. The
+swing reads off the normalized panel unmistakably — a rise to ~1.5 torso
+lengths, a drop through the hips, a follow-through peak — against an address
+that holds flat near 0. The nothing-clip has no such excursion anywhere, so it
+labels as a genuine negative for P1.1. Labels go in
+`validation/device_corpus/labels.json` (`--write-template` writes the empty
+slots), `null` where the labeller cannot tell.
+
+The sheet deliberately does **not** draw `locate_swing()`'s answer on itself.
+That answer is what the labels exist to judge; showing it to the labeller
+would contaminate the ground truth with the hypothesis.
+
+**What the current shipped detector does on these clips**, for scale — the
+swing in recording 1 is around 9.5-11.5 s and in recording 4 around 11-13 s:
+
+```
+             takeaway      top       impact     finish     clip
+nothing      0.0 s        0.2 s      2.1 s      4.5 s      5.6 s
+swing 1      1.1 s        3.6 s     14.8 s     15.2 s     16.0 s
+swing 2      0.0 s        0.5 s      2.4 s     13.8 s     15.4 s
+swing 3      0.0 s        4.3 s      7.2 s     15.8 s     16.3 s
+swing 4      0.0 s        0.2 s     17.6 s     18.1 s     18.5 s
+```
+
+Every one of them anchors in the walk-in, not the swing. This is P1.3 stated in
+seconds rather than in frame indices.
 
 **State of the code.** `locate_swing()` is committed, documented as
 unvalidated, and reachable only by passing `torso=` to `detect_phases`. Nothing
