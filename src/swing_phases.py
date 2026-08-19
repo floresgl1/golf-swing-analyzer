@@ -178,14 +178,12 @@ def implausible_swing(phases):
       - The events must be strictly ordered. `detect_phases` guarantees only
         takeaway <= top <= impact by construction; equality means a phase has
         zero duration, which is not a swing that happened.
-      - The backswing must outlast the downswing. The downswing is gravity- and
-        release-assisted and is universally the faster half — tour players
-        average ~3:1 and amateurs less, but the ordering itself does not
-        invert. This is an empirical invariant of golf swings rather than a law
-        of physics, so it is deliberately set AT the inversion point: it
-        rejects 0.1:1, and passes 1.1:1 even though that is a strange swing.
-        Judging *how good* a tempo is needs the corpus; judging that a swing
-        took ten times longer coming down than going up does not.
+
+    REMOVED 2026-08-17: a tempo-inversion check (backswing must outlast the
+    downswing) lived here and rejected 3 of the first 4 real swings measured on
+    a phone. It rested on the detected phases meaning something; on real device
+    clips they do not. See P1.3 in ROADMAP.md. Do not reinstate it without
+    fixing phase location first.
 
     Deliberately NOT checked here: anything needing a calibrated number. If a
     proposed check requires a constant only P0.1 can supply, it belongs in P0.2.
@@ -203,13 +201,6 @@ def implausible_swing(phases):
     if impact <= top:
         return ('the downswing has no duration (top and impact are the same '
                 'frame)')
-
-    backswing_frames = top - takeaway
-    downswing_frames = impact - top
-    if backswing_frames <= downswing_frames:
-        return (f'the downswing ({downswing_frames} frames) is not shorter '
-                f'than the backswing ({backswing_frames} frames), which does '
-                'not happen in a golf swing')
 
     return None
 

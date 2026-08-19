@@ -483,6 +483,62 @@ nothing but the filesystem. The share sheet remains, but a corpus P0.1 cannot
 proceed without should not have a single route off the device, and that route
 should not be the one with four builds of platform quirks behind it.
 
+#### P1.3 — `detect_phases` does not find the swing in a real phone clip (2026-08-17)
+
+**The first five real recordings are off the device, and they invalidate more
+than the gate.** Replaying `detect_phases` on the stored per-frame `wrist_y`:
+
+```
+#   clip_s  cover  take   top   imp   fin  back  down  ratio
+1      5.6   0.61     0     4    63   138     4    59  0.068   <- clip of nothing
+2     16.0   0.81     0     1   443   456     1   442  0.002
+3     15.4   0.73     0    15    66   412    15    51  0.294
+4     16.3   0.62     0   130   265   474   130   135  0.963
+5     18.5   0.79     0     8   526   540     8   518  0.015
+```
+
+**`top` lands at frame 1, 4, 8, 15 of a 15-18 second clip.** The detector is not
+finding the swing; it locks onto incidental hand movement during setup, because
+`top` is "the first peak clearing half the height range" and a 16-second clip is
+overwhelmingly not-swing. Every fault value in those reports — the 0.44 head
+sway included — was measured between meaningless anchors.
+
+**Consequence 1: the tempo-inversion gate is removed.** It rejected 3 of the 4
+genuine swings. It assumed the detected phases meant something; on real clips
+they do not, so a ratio below 1:1 says the *detector* failed, not that the
+input lacked a swing. The zero-duration checks stay — those are still
+impossibilities. The five recordings above are pinned as regression tests in
+both suites; reinstating the tempo check turns all four real-swing tests red.
+
+**Consequence 2: there is currently NO valid presence signal, so P1.1 is open
+again.** A clip of nothing still produces a full report. Note `pose_coverage`
+cannot substitute: the nothing-clip scored **0.61** against 0.62-0.81 for real
+swings — ML Kit found a "person" in 61% of frames of nothing, and the ranges
+overlap. The upstream likelihood gate (option A) would not have separated these
+either.
+
+**Consequence 3: capture length is a first-class variable.** A golf swing is
+1-2 seconds; these clips are 15-18. Until phase location is fixed, the cheapest
+mitigation is recording only the swing — start just before, stop just after.
+Worth a record-screen prompt regardless.
+
+**This is P0.2's `detect_address_onset()`, arriving from the other direction.**
+P0.2 wanted onset detection to fix the fault-baseline anchor and the top search
+bound. This is the same function needed to answer "where in this clip is the
+swing at all". Do not attempt a separate fix; it is the same work.
+
+**Observed: the held Python/Dart divergence bites on real data.** On recording
+4 the app stored `tempo_ratio` 1.512 while Python replaying the same `wrist_y`
+gives 0.963 — different smoothing windows (Dart's fixed `smooth = 5` frames vs
+Python's duration-based kernel at 29.97 fps) land `top` in different places.
+The divergence is documented and held pending P0.2, but this is the first time
+it has been seen changing a reported number rather than a theoretical one.
+
+**Corpus status: 5 recordings, one participant, one session.** Not P0.1's
+corpus — the spec calls for multiple subjects and repeat sessions — but the
+first real data the project has, and the export path that produced it now
+works.
+
 **iOS compile gate (added 2026-08-04)** — `.github/workflows/ios-build.yml`
 builds iOS unsigned on a GitHub Actions `macos-latest` runner, so iOS
 compilation is verified from Windows without Apple hardware.

@@ -87,14 +87,6 @@ def test_implausible_swing_accepts_a_normal_swing():
     assert implausible_swing(phases) is None
 
 
-def test_implausible_swing_rejects_the_device_case():
-    # The trajectory the app actually reported from a clip containing no swing:
-    # backswing 6 frames, downswing 58, ratio 0.1:1.
-    phases = {'takeaway': 0, 'top': 6, 'impact': 64, 'finish': 100}
-    reason = implausible_swing(phases)
-    assert reason is not None
-    assert 'downswing' in reason
-
 
 def test_implausible_swing_rejects_zero_duration_backswing():
     phases = {'takeaway': 5, 'top': 5, 'impact': 20, 'finish': 40}
@@ -110,15 +102,23 @@ def test_implausible_swing_rejects_no_phases():
     assert implausible_swing(None) is not None
 
 
-def test_implausible_swing_boundary_is_at_the_inversion_point():
-    """Equal halves reject; one frame either side of that decides it.
 
-    The gate is deliberately loose -- it rejects only what cannot be a swing,
-    not what is merely an odd one. 11:10 is a strange tempo and still passes,
-    because judging *how good* a tempo is needs the P0.1 corpus.
-    """
-    equal = {'takeaway': 0, 'top': 10, 'impact': 20, 'finish': 30}
-    assert implausible_swing(equal) is not None
 
-    barely_valid = {'takeaway': 0, 'top': 11, 'impact': 21, 'finish': 30}
-    assert implausible_swing(barely_valid) is None
+# Phase indices recomputed from the first five real recordings off a phone
+# (2026-08-17, 30 fps). Every one has a tempo ratio below 1:1 -- the detector
+# places `top` in the first half-second of a 15-18 second clip -- so the
+# tempo-inversion check that used to live in implausible_swing rejected three
+# of the four genuine swings. The gate must let all of these through: they are
+# badly *analysed*, which is P1.3's problem, not absent.
+DEVICE_PHASES_2026_08_17 = [
+    {'takeaway': 0, 'top': 4, 'impact': 63, 'finish': 138},    # clip of nothing
+    {'takeaway': 0, 'top': 1, 'impact': 443, 'finish': 456},   # real swing
+    {'takeaway': 0, 'top': 15, 'impact': 66, 'finish': 412},   # real swing
+    {'takeaway': 0, 'top': 130, 'impact': 265, 'finish': 474}, # real swing
+    {'takeaway': 0, 'top': 8, 'impact': 526, 'finish': 540},   # real swing
+]
+
+
+@pytest.mark.parametrize('phases', DEVICE_PHASES_2026_08_17)
+def test_implausible_swing_accepts_real_device_recordings(phases):
+    assert implausible_swing(phases) is None

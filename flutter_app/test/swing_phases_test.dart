@@ -74,13 +74,6 @@ void main() {
       expect(implausibleSwing(p(10, 32, 40, 60)), isNull);
     });
 
-    test('rejects the device case', () {
-      // The trajectory the app actually reported from a clip containing no
-      // swing: backswing 6 frames, downswing 58, ratio 0.1:1.
-      final reason = implausibleSwing(p(0, 6, 64, 100));
-      expect(reason, isNotNull);
-      expect(reason, contains('downswing'));
-    });
 
     test('rejects a zero-duration backswing', () {
       expect(implausibleSwing(p(5, 5, 20, 40)), isNotNull);
@@ -94,12 +87,30 @@ void main() {
       expect(implausibleSwing(null), isNotNull);
     });
 
-    test('boundary sits at the inversion point', () {
-      // Deliberately loose: rejects only what cannot be a swing, not what is
-      // merely odd. 11:10 is a strange tempo and still passes, because judging
-      // *how good* a tempo is needs the P0.1 corpus.
-      expect(implausibleSwing(p(0, 10, 20, 30)), isNotNull);
-      expect(implausibleSwing(p(0, 11, 21, 30)), isNull);
+  });
+
+  // Phase indices recomputed from the first five real recordings off a phone
+  // (2026-08-17, 30 fps). Every one has a tempo ratio below 1:1 -- the detector
+  // places `top` in the first half-second of a 15-18 second clip -- so the
+  // tempo-inversion check that used to live in implausibleSwing rejected three
+  // of the four genuine swings. The gate must let all of these through: they
+  // are badly *analysed*, which is P1.3's problem, not absent.
+  group('implausibleSwing accepts real device recordings', () {
+    const deviceRecordings = <String, SwingPhases>{
+      'clip of nothing':
+          SwingPhases(takeaway: 0, top: 4, impact: 63, finish: 138),
+      'real swing 1':
+          SwingPhases(takeaway: 0, top: 1, impact: 443, finish: 456),
+      'real swing 2':
+          SwingPhases(takeaway: 0, top: 15, impact: 66, finish: 412),
+      'real swing 3':
+          SwingPhases(takeaway: 0, top: 130, impact: 265, finish: 474),
+      'real swing 4':
+          SwingPhases(takeaway: 0, top: 8, impact: 526, finish: 540),
+    };
+
+    deviceRecordings.forEach((label, phases) {
+      test(label, () => expect(implausibleSwing(phases), isNull));
     });
   });
 }
