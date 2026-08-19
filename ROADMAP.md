@@ -732,6 +732,19 @@ ordered and inside the clip, and they land later than peak localization's. The
 frame numbers are deliberately not pinned — a test asserting them would look
 like evidence they are right.
 
+**The app's name did not match its store listing — FIXED 2026-08-19.** Measured
+against the pinned SDK rather than assumed: `flutter create --project-name
+golf_swing_analyzer` writes `CFBundleDisplayName` "Golf Swing Analyzer" and
+`CFBundleName` "golf_swing_analyzer", while the App Store listing is **Fore
+Swing**. A tester installing from TestFlight would have found an icon whose name
+did not match what they tapped to get it. `configure_ios.py` now patches both
+keys (the generated `CFBundleName` is also past Apple's 15-character guidance).
+
+Deliberately **not** renamed: `main.dart`'s `MaterialApp` title, still "Golf
+Swing Analyzer". That is user-facing copy, and it belongs to the product-voice
+pass below rather than to a plist patcher — renaming it here would scatter the
+voice work across commits that are not about voice.
+
 **iOS compile gate (added 2026-08-04)** — `.github/workflows/ios-build.yml`
 builds iOS unsigned on a GitHub Actions `macos-latest` runner, so iOS
 compilation is verified from Windows without Apple hardware.
