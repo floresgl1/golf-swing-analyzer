@@ -300,7 +300,7 @@ Why blocked: step 2 has no ground truth without the corpus. Doing step 1 alone s
 - Remaining seam: `main()` still uses container fps and pins windowing to `BASELINE_FPS`. When P0.1 lands a `capture_fps` metadata field per video (defaulting to `CAP_PROP_FPS` when they agree), thread it into `detect_phases`/detectors — that is the point where slow-mo vs real-time stops being a hidden variable.
 - **Left-handed golfers**: `HANDEDNESS` is a module constant with no per-run override — lefties are analyzed on the trail wrist (garbage phases). Parameterize before admitting lefties to the corpus.
 
-#### P0.4 — The Python threshold tests are vacuous — audit before recalibrating (2026-07-31)
+#### P0.4 — The Python threshold tests were vacuous — FIXED 2026-08-19
 
 **`tests/test_faults.py` cannot detect a threshold change. This is measured, not suspected.** All four constants were mutated at once — `SWAY_THRESHOLD` 0.13→0.20, `REVERSE_PIVOT_THRESHOLD` 0.12→0.30, `EARLY_EXTENSION_THRESHOLD` 0.10→0.40, `POSTURE_THRESHOLD` 12.0→30.0, i.e. up to **3×** — and the suite stayed green:
 
@@ -346,6 +346,29 @@ So a metric exactly at its threshold is specified as **not** flagged, and an ang
 The `>=` comparisons elsewhere in `src/` are a different kind and are not counter-examples: they are tie-breaks and bounds guards (`faults.py:139` `hip_fin >= hip_addr` resolving the static-hip tie to `+1.0`, `faults.py:348` `len(path) >= 2`, the `swing_phases.py` fps/window guards), not verdicts. The `faults.py:139` tie-break is the one place equality is deliberately resolved to the positive side, and it is itself unverified — confirm it is intended when recalibrating, because it decides which way "toward target" points.
 
 **Method, for whoever redoes this audit:** mutate a constant in `src/faults.py`, run pytest, confirm the suite goes red, restore the constant. If it stays green, the test is vacuous. This same property was independently reproduced in a generated characterization file during a sub-agent probe; that file was deleted and the finding above rests on `tests/test_faults.py` alone, which predates it.
+
+**FIXED 2026-08-19.** `tests/test_faults.py` no longer imports the thresholds at all. Each detector is probed with a table of absolute values written out by hand — clearly below, exactly on the boundary, a hair above, clearly above — and the constant it straddles is named only in a comment.
+
+**The vacuity was worse than recorded before it was fixed.** The note above claims `tests/test_faults.py` stayed green under mutation. Re-run on 2026-08-19 with all four constants mutated at once: **the entire suite, 81 tests, stayed green.** No test anywhere in `tests/` could see a 3× threshold change.
+
+**Verified by mutation, one constant at a time** — the step the old file never had. Each threshold was moved and `tests/test_faults.py` re-run:
+
+```
+downward, 1 ULP        sway / reverse / early-ext / posture   RED  RED  RED  RED
+upward, +0.0001        sway / reverse / early-ext / posture   RED  RED  ***  RED
+upward, +0.005         sway / reverse / early-ext / posture   RED  RED  RED  RED
+upward, 1.5-2.5x       sway / posture                         RED  RED
+```
+
+The two directions are not symmetric, and the file says so: **any downward move is caught immediately** by the on-boundary probe, because the boundary value starts flagging. An **upward** move is only caught once it clears the nearest above-probe, so probe spacing is the resolution — the suite pins each boundary to within 0.0001, which is a bound, not a guarantee of zero.
+
+`***` is the one degenerate case, recorded so it is not rediscovered as a bug: moving `EARLY_EXTENSION_THRESHOLD` to **exactly** the hair-above probe value (0.1001) stays green, because whether the computed metric compares greater than it is then decided by floating-point rounding inside the detector. The other three go red at the same offset. Anywhere off a probe value the bound holds.
+
+**The equality convention is now tested.** The note below observes that nothing anywhere tested exact equality, which is the one input where a strict-vs-inclusive slip is invisible. Each detector now has an on-boundary probe asserting the value **exactly** (`== 0.13`, not `approx`) and asserting it does not flag. All four probe values divide exactly in IEEE double — 13/100, 12/100, 10/100, and `degrees(atan2(·, 100))` round-tripping 12.0 — so these are exact comparisons, not near-misses.
+
+**Incidental finding, not fixed:** three of the four detectors return a numpy bool for `flagged` and one returns a Python bool, so `is True` fails on three of them. The tests cast with `bool()`; the inconsistency in `src/faults.py` is left alone rather than changed under an unrelated commit.
+
+**Still open in P0.4:** only `tests/test_faults.py` was rewritten. `faults.py:139`'s `hip_fin >= hip_addr` tie-break — the one place equality resolves to the positive side, and the thing that decides which way "toward target" points — is still unverified, and `_fold`'s ±90 boundary (Architecture Notes) is still untested. Both are equality-convention gaps of the same family.
 
 ### P1 — Flutter Device Testing
 **Status**: In progress — app installed via TestFlight 2026-08-17, first finding below
