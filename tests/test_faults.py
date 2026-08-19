@@ -93,10 +93,10 @@ TORSO = _const(SCALE)
 # One degenerate case survives, recorded so it is not rediscovered as a bug: a
 # threshold moved to land EXACTLY on a probe value may or may not be caught,
 # because whether the computed metric compares greater than it is then decided
-# by floating-point rounding in the detector's own arithmetic. Measured:
-# moving EARLY_EXTENSION_THRESHOLD to 0.1001 -- exactly the hair-above probe --
-# stays green, while the same move on the other three goes red. Anywhere off a
-# probe value, the bound above holds.
+# by floating-point rounding in the detector's own arithmetic. Measured: moving
+# EARLY_EXTENSION_THRESHOLD to 0.1001, or DIP_THRESHOLD to 0.2501 -- in each
+# case exactly the hair-above probe -- stays green, while the same move on the
+# other three goes red. Anywhere off a probe value, the bound above holds.
 
 
 # ---- head sway: lateral = |impact_x - addr_x| / torso ----
@@ -119,6 +119,33 @@ def test_head_sway_boundary(head_x_px, lateral, flagged):
     assert res['lateral'] == pytest.approx(lateral)
     # bool(): three of the four detectors return a numpy bool, one a Python bool.
     assert bool(res['flagged']) is flagged
+
+
+# ---- head dip: vertical = |impact_y - addr_y| / torso ----
+# Straddles DIP_THRESHOLD, currently 0.25. `dip_flagged` had NO boundary test
+# of any kind before 2026-08-19 -- the fifth threshold in src/faults.py, and
+# the only one the suite never touched. It is informational rather than a
+# verdict (`flagged` keys on sway alone), but it is still printed, so a wrong
+# constant is still a wrong claim shown to a golfer.
+
+def _dip(impact_head_y):
+    head_x = _const(0.0)  # no lateral sway
+    head_y = _with_windows(50.0, {(28, 32): impact_head_y})
+    return F.detect_head_movement(head_x, head_y, TORSO, PHASES)
+
+
+@pytest.mark.parametrize('head_y_px, vertical, dip_flagged', [
+    (74.0,   0.24,   False),  # clearly below (addr y = 50)
+    (75.0,   0.25,   False),  # exactly the boundary -> no-action side
+    (75.01,  0.2501, True),   # a hair above
+    (76.0,   0.26,   True),   # clearly above
+])
+def test_head_dip_boundary(head_y_px, vertical, dip_flagged):
+    res = _dip(head_y_px)
+    assert res['vertical'] == pytest.approx(vertical)
+    assert bool(res['dip_flagged']) is dip_flagged
+    # The head-movement FAULT keys on sway alone, so a dip never flags it.
+    assert not res['flagged']
 
 
 # ---- reverse pivot: reverse = ((head_top-hip_top)-(head_addr-hip_addr))*sign/torso ----

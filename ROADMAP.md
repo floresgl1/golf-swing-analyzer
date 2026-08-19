@@ -354,15 +354,18 @@ The `>=` comparisons elsewhere in `src/` are a different kind and are not counte
 **Verified by mutation, one constant at a time** — the step the old file never had. Each threshold was moved and `tests/test_faults.py` re-run:
 
 ```
-downward, 1 ULP        sway / reverse / early-ext / posture   RED  RED  RED  RED
-upward, +0.0001        sway / reverse / early-ext / posture   RED  RED  ***  RED
-upward, +0.005         sway / reverse / early-ext / posture   RED  RED  RED  RED
-upward, 1.5-2.5x       sway / posture                         RED  RED
+                       sway  dip  reverse  early-ext  posture
+downward, 1 ULP        RED   RED  RED      RED        RED
+upward, +0.0001        RED   ***  RED      ***        RED
+upward, +0.005         RED   RED  RED      RED        RED
+upward, 1.5-2.5x       RED    -    -        -         RED
 ```
 
 The two directions are not symmetric, and the file says so: **any downward move is caught immediately** by the on-boundary probe, because the boundary value starts flagging. An **upward** move is only caught once it clears the nearest above-probe, so probe spacing is the resolution — the suite pins each boundary to within 0.0001, which is a bound, not a guarantee of zero.
 
-`***` is the one degenerate case, recorded so it is not rediscovered as a bug: moving `EARLY_EXTENSION_THRESHOLD` to **exactly** the hair-above probe value (0.1001) stays green, because whether the computed metric compares greater than it is then decided by floating-point rounding inside the detector. The other three go red at the same offset. Anywhere off a probe value the bound holds.
+`***` marks the one degenerate case, recorded so it is not rediscovered as a bug: moving a threshold to land **exactly** on the hair-above probe value — `EARLY_EXTENSION_THRESHOLD` to 0.1001, `DIP_THRESHOLD` to 0.2501 — stays green, because whether the computed metric compares greater than it is then decided by floating-point rounding inside the detector. The other three go red at the same offset. Anywhere off a probe value the bound holds.
+
+**`DIP_THRESHOLD` had no test of any kind** and is the fifth threshold in `src/faults.py` — the audit above only ever counted four. It is informational rather than a verdict (`flagged` keys on sway alone) but is still printed, so a wrong constant is still a wrong claim shown to a golfer. It now has the same four probes as the rest, plus an assertion that a dip never sets the head-movement fault.
 
 **The equality convention is now tested.** The note below observes that nothing anywhere tested exact equality, which is the one input where a strict-vs-inclusive slip is invisible. Each detector now has an on-boundary probe asserting the value **exactly** (`== 0.13`, not `approx`) and asserting it does not flag. All four probe values divide exactly in IEEE double — 13/100, 12/100, 10/100, and `degrees(atan2(·, 100))` round-tripping 12.0 — so these are exact comparisons, not near-misses.
 
