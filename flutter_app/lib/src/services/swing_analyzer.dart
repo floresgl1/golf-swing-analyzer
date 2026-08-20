@@ -69,11 +69,15 @@ class SwingAnalyzer {
   /// [targeting] is the fault the golfer chose to work on (a fault id), or null
   /// for a full swing check. All four detectors run either way; targeting only
   /// marks the report's focus and is recorded in the swing history.
+  /// [clipName] is the retained recording this swing was measured from, so
+  /// the record can be joined back to a watchable video. Null when the clip
+  /// could not be kept.
   Future<SwingAnalysis> analyze(
     String videoPath, {
     String? targeting,
     SwingKind swingKind = SwingKind.natural,
     String? calibrationFault,
+    String? clipName,
     ProgressCallback? onProgress,
   }) async {
     onProgress?.call(AnalysisStage.extractingFrames, 0);
@@ -98,6 +102,7 @@ class SwingAnalyzer {
         targeting,
         swingKind,
         calibrationFault,
+        clipName,
       );
     } finally {
       // Clean up the extracted JPEGs regardless of outcome.
@@ -113,6 +118,7 @@ class SwingAnalyzer {
     String? targeting,
     SwingKind swingKind,
     String? calibrationFault,
+    String? clipName,
   ) {
     // Assemble parallel arrays, matching the lists built in faults.main().
     final eyeX = [for (final f in features) f.eyeX];
@@ -217,6 +223,7 @@ class SwingAnalyzer {
         thresholdBasis: thresholdBasis,
         swingKind: swingKind,
         calibrationFault: calibrationFault,
+        clipName: clipName,
       ),
     );
   }

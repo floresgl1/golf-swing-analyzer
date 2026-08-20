@@ -687,9 +687,44 @@ fallback.
 analyzer and keeps no copy; nothing writes the video into the app's Documents
 directory, so the `UIFileSharingEnabled` route added for the corpus export
 cannot see it; and the file sits in the app's temp directory, which iOS
-reclaims. **The five recordings of 2026-08-17 cannot be rewatched.** Anything
-that wants video ground truth has to retain the video first — a product
-decision (storage, deletion, consent) that is not made yet.
+reclaims. **The five recordings of 2026-08-17 cannot be rewatched** — retention came
+after them, so they stay label-from-data only. Anything
+that wants video ground truth has to retain the video first.
+
+**Retention shipped 2026-08-19, on the golfer's decision to keep the data.**
+`clip_store.dart` moves each recording into `<Documents>/clips` as
+`swing_<YYYYMMDD>_<HHMMSS>.mp4`, which the `UIFileSharingEnabled` /
+`LSSupportsOpeningDocumentsInPlace` keys already expose in the Files app.
+Nothing new leaves the device: there is no backend, and this writes to the same
+container the corpus lives in.
+
+Four decisions worth not relitigating:
+
+- **Move, not copy.** A copy leaves two of a ~50 MB file on the phone, one of
+  them in a directory iOS reclaims on its own schedule — and analysis would be
+  reading the doomed one. Analysis now runs against the retained file.
+- **Retained BEFORE analysis, not after.** A swing that fails to analyze is the
+  most useful one to be able to rewatch, and the P1.1 hard-fail path throws.
+  Retaining afterwards would have lost exactly the clips worth keeping.
+- **The join is a written field, not a derived one.** Records carry
+  `clip_name`; nothing infers the clip from `timestamp`. A derived join breaks
+  silently the first time either side rounds differently, and this join is the
+  entire point of retaining.
+- **Deletion is part of the feature, not a follow-up.** These are videos of a
+  person and the only copy is on their phone. `Profile > Saved videos` shows
+  the count and size and deletes them all behind a confirmation. Deleting clips
+  does **not** touch the corpus — the measurements stay, so space can be
+  reclaimed without losing swing history.
+
+**No schema bump.** `historySchemaVersion` describes the file's *shape* (header
+present or not), and `clip_name` is an optional record field: old readers
+preserve it through `_source`, new readers read a missing key as "no clip".
+Both directions are tested. Every record written before 2026-08-19 has no clip
+and correctly says so.
+
+Clips travel by the Files app, **not** the corpus export — the share sheet
+carries the measurements, and putting hundreds of megabytes of video through it
+would break the one path P0.1 depends on.
 
 **They can still be labelled, from the data instead of the video.**
 `validation/device_corpus/label_sheet.py` renders one sheet per recording from

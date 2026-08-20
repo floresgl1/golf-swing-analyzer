@@ -240,6 +240,19 @@ class SwingSession {
   /// Whether this was a natural swing or a labelled calibration swing.
   final SwingKind? swingKind;
 
+  /// File name of the retained recording in `<Documents>/clips`, or null when
+  /// no clip was kept — every record written before 2026-08-19, and any swing
+  /// whose recording could not be retained.
+  ///
+  /// This is the join between a measurement and the video it was measured
+  /// from, and it exists because that join was missing: the five recordings of
+  /// 2026-08-17 left per-frame series behind but no watchable clip, so nobody
+  /// could say where the swing in them actually was. Written onto the record
+  /// rather than derived from [timestamp] so the two are never required to
+  /// agree — a derived join breaks silently the first time either side rounds
+  /// differently. See P1.4 in ROADMAP.md.
+  final String? clipName;
+
   /// For a [SwingKind.calibration] swing, the fault id the golfer was
   /// deliberately exaggerating. Null otherwise.
   final String? calibrationFault;
@@ -266,6 +279,7 @@ class SwingSession {
     this.thresholdBasis,
     this.swingKind,
     this.calibrationFault,
+    this.clipName,
     Map<String, dynamic> source = const <String, dynamic>{},
   }) : _source = source;
 
@@ -295,6 +309,7 @@ class SwingSession {
       thresholdBasis: json['threshold_basis'] as String?,
       swingKind: SwingKind.tryParse(json['swing_kind']),
       calibrationFault: json['calibration_fault'] as String?,
+      clipName: json['clip_name'] as String?,
       source: json,
     );
   }
@@ -319,6 +334,7 @@ class SwingSession {
         'threshold_basis': thresholdBasis,
         'swing_kind': swingKind?.id,
         'calibration_fault': calibrationFault,
+        'clip_name': clipName,
         // Last: the bulky arrays sort to the end of the line, so a record stays
         // readable when eyeballing the file.
         'frames': frames?.toJson(),
@@ -353,6 +369,7 @@ SwingSession buildSession({
   String? thresholdBasis,
   SwingKind? swingKind,
   String? calibrationFault,
+  String? clipName,
 }) {
   double? finiteOrNull(double v) => v.isFinite ? v : null;
   return SwingSession(
@@ -397,6 +414,7 @@ SwingSession buildSession({
     // picker value cannot mislabel a natural swing.
     calibrationFault:
         swingKind == SwingKind.calibration ? calibrationFault : null,
+    clipName: clipName,
   );
 }
 

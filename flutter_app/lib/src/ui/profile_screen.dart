@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../analysis/participant.dart';
 import '../analysis/swing_history.dart';
+import '../services/clip_store.dart';
 import '../services/corpus_export.dart';
 
 /// The golfer's own record: their anonymous id, what a coach has told them
@@ -32,6 +33,81 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Anchors the iOS share popover to the export button.
   final GlobalKey _exportButtonKey = GlobalKey();
   bool _exporting = false;
+
+  /// Retained recordings: how many and how much space. Null until read.
+  int? _clipCount;
+  int? _clipBytes;
+  bool _deletingClips = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadClipUsage();
+  }
+
+  Future<void> _loadClipUsage() async {
+    try {
+      final store = await ClipStore.forApp();
+      final clips = await store.list();
+      if (!mounted) return;
+      setState(() {
+        _clipCount = clips.length;
+        _clipBytes = clips.fold<int>(0, (sum, c) => sum + c.sizeBytes);
+      });
+    } catch (_) {
+      // Leave the figures unknown rather than claiming zero; a golfer told
+      // "0 MB" would reasonably conclude nothing was kept.
+      if (mounted) setState(() => _clipCount = null);
+    }
+  }
+
+  Future<void> _deleteClips() async {
+    final count = _clipCount ?? 0;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete saved videos?'),
+        content: Text(
+          'This deletes $count recording${count == 1 ? '' : 's'} from this '
+          'phone and cannot be undone. Your swing measurements are kept — only '
+          'the videos go.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep them'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _deletingClips = true);
+    try {
+      final store = await ClipStore.forApp();
+      final deleted = await store.deleteAll();
+      await _loadClipUsage();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Deleted $deleted video${deleted == 1 ? '' : 's'}.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not delete: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _deletingClips = false);
+    }
+  }
 
   Future<void> _setReport(String faultId, CoachConfirmation value) async {
     final store = widget.store;
@@ -170,6 +246,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onPressed: _exporting ? null : _export,
               icon: const Icon(Icons.ios_share),
               label: Text(_exporting ? 'Preparing…' : 'Export swing history'),
+            ),
+          ),
+          const Divider(height: 32),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text('Saved videos', style: theme.textTheme.titleMedium),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              _clipCount == null
+                  ? 'Every swing you record is kept on this phone so it can be '
+                      'watched back. Nothing is uploaded.'
+                  : '${_clipCount!} recording${_clipCount == 1 ? '' : 's'}, '
+                      '${formatClipBytes(_clipBytes ?? 0)}. Kept on this phone '
+                      'so your swings can be watched back — nothing is '
+                      'uploaded. They are in the Files app under '
+                      '"On My iPhone".',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: OutlinedButton.icon(
+              onPressed:
+                  _deletingClips || (_clipCount ?? 0) == 0 ? null : _deleteClips,
+              icon: const Icon(Icons.delete_outline),
+              label: Text(_deletingClips ? 'Deleting…' : 'Delete saved videos'),
             ),
           ),
         ],

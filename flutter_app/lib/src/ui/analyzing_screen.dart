@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../analysis/swing_history.dart';
 import '../analysis/swing_history_store.dart';
 import '../models/drill.dart';
+import '../services/clip_store.dart';
 import '../services/swing_analyzer.dart';
 import 'report_screen.dart';
 
@@ -70,13 +71,38 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
     _run();
   }
 
+  /// Move this swing's recording somewhere it will survive, or null if that
+  /// failed.
+  ///
+  /// Never allowed to fail the analysis: a golfer who cannot keep the video is
+  /// still owed their report. The failure is logged rather than shown, because
+  /// the report itself carries no claim that depends on the clip existing.
+  Future<StoredClip?> _retainClip() async {
+    try {
+      final store = await ClipStore.forApp();
+      return await store.retain(widget.videoPath);
+    } catch (error, stack) {
+      debugPrint('Clip retention failed: $error\n$stack');
+      return null;
+    }
+  }
+
   Future<void> _run() async {
     try {
+      // Retain the recording BEFORE analyzing it, for two reasons. The clip
+      // lives in a temp directory iOS reclaims on its own schedule, and a
+      // swing that fails to analyze is the most useful one to be able to
+      // rewatch — the hard-fail path throws, so retaining afterwards would
+      // lose exactly the clips worth keeping. Analysis then reads the retained
+      // copy, so there is only ever one of a ~50 MB file on the phone.
+      final clip = await _retainClip();
+
       final analysis = await _analyzer.analyze(
-        widget.videoPath,
+        clip?.path ?? widget.videoPath,
         targeting: widget.targeting,
         swingKind: widget.swingKind,
         calibrationFault: widget.calibrationFault,
+        clipName: clip?.name,
         onProgress: (stage, fraction) {
           if (!mounted) return;
           setState(() {

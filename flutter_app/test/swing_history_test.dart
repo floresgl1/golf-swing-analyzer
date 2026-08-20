@@ -272,4 +272,51 @@ void main() {
       expect(File('${legacy.path}.migrated.bak').existsSync(), isTrue);
     });
   });
+
+  group('clip_name — the join between a record and its video', () {
+    // This field is the only thing connecting a measurement to a watchable
+    // recording. If it does not survive a write/read cycle the retention is
+    // pointless: the clips exist but nothing says which swing each one is.
+
+    test('round-trips through JSON', () {
+      final session = SwingSession(
+        timestamp: DateTime(2026, 8, 17, 7, 51, 50),
+        faults: const {},
+        clipName: 'swing_20260817_075150.mp4',
+      );
+      final restored = SwingSession.fromJson(session.toJson());
+      expect(restored.clipName, 'swing_20260817_075150.mp4');
+    });
+
+    test('is written under the snake_case key the corpus uses', () {
+      final session = SwingSession(
+        timestamp: DateTime(2026, 8, 17),
+        faults: const {},
+        clipName: 'swing_20260817_000000.mp4',
+      );
+      expect(session.toJson()['clip_name'], 'swing_20260817_000000.mp4');
+    });
+
+    test('null on a record written before clips were kept', () {
+      // Every record in the corpus predating 2026-08-19 has no such key, and
+      // that must read as "no clip", not as a parse failure.
+      final legacy = SwingSession.fromJson({
+        'timestamp': '2026-08-17T07:51:50-07:00',
+        'faults': <String, dynamic>{},
+      });
+      expect(legacy.clipName, isNull);
+    });
+
+    test('survives a round-trip on a record that never knew the field', () {
+      final legacy = SwingSession.fromJson({
+        'timestamp': '2026-08-17T07:51:50-07:00',
+        'faults': <String, dynamic>{},
+        'some_future_key': 42,
+      });
+      final json = legacy.toJson();
+      expect(json['clip_name'], isNull);
+      expect(json['some_future_key'], 42);
+    });
+  });
+
 }
