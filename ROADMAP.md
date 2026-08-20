@@ -725,24 +725,50 @@ with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
 read as the fastest descent in the clip. Every clip in the corpus carries a
 few: 3 to 19 jumps over 0.5 torso-lengths each.
 
-**A hypothesis tried and refuted, recorded so it is not retried.** The jump sits
-four frames after a 0.53 s pose gap (frames 85-87), so the obvious fix was to
-refuse to compute the descent rate across interpolated frames — masking any
-rate whose smoothing window touches an untracked frame. **It does not work.**
-With `DESCENT_SMOOTH_S` at 0.10 s the window is three frames wide, and frames
-90-92 are all tracked, so the mask never sees the artifact. The transient
-persists several frames past re-acquisition; masking only the gap edge is too
-narrow. (The same masking did move two *unlabelled* 2026-08-17 clips from the
-end of the clip toward the middle, 13.78s -> 9.08s and 15.82s -> 9.81s, which
-looks like an improvement and cannot be called one without labels.)
+**TWO hypotheses tried and refuted, recorded so they are not retried.**
 
-**What would fix it, and why it is not being shipped now.** Rejecting per-frame
-jumps far outside the clip's own distribution would remove this anchor. That is
-a constant about *pose-tracker noise* rather than about golf, and it could be
-set from the data's own spread rather than by eye — but it would be chosen
-against three labelled swings, one of which is the failure it is designed to
-fix. That is fitting to the sample. **Label the remaining five and it becomes a
-measurement instead.**
+*First:* the jump sits four frames after a 0.53 s pose gap (frames 85-87), so
+refuse to compute the descent rate across interpolated frames — mask any rate
+whose smoothing window touches an untracked frame. **Does not work.** With
+`DESCENT_SMOOTH_S` at 0.10 s the window is three frames wide and frames 90-92
+are all tracked, so the mask never sees the artifact. (The same masking did
+move two *unlabelled* 2026-08-17 clips from the end toward the middle, 13.78s
+-> 9.08s and 15.82s -> 9.81s, which looks like an improvement and cannot be
+called one without labels.)
+
+*Second — and this one retracts a claim made earlier in this same section:*
+reject per-frame jumps far outside the clip's own distribution. **Also does not
+work, and the reason matters more than the fix.** A 3-frame median filter — the
+smallest window that can remove a one-frame outlier at all — barely moves the
+descent rate at the false anchor, from **-12.92 to -12.35** torso-lengths/s,
+still beating the real swing's **-8.94**. The anchor survives at 2.97 s.
+
+The drop is a **step, not a spike**: frames 92, 93 and 94 are all low
+(+0.21, +0.29, +0.20) after +1.13 at frame 91. A median cannot remove it
+because there is nothing transient to remove.
+
+**What is actually happening, from the golfer (2026-08-20): "around 3 seconds
+in I am walking with the club into position."** The wrist sits ~1.1
+torso-lengths above the hips because the club is being carried, and then it
+comes down into address. **That descent genuinely out-runs the downswing** —
+-12.9 against -8.9 torso-lengths/s — so this is not a tracking artifact to be
+filtered away. Setting up to hit the ball is a faster normalized wrist descent
+than hitting it.
+
+**So the anchor is wrong, not the data.** "Fastest descent" is not sufficient,
+and no amount of cleaning will make it sufficient, because the competing event
+is real. This is the same wall the earlier note hit from the other side —
+"practice swings, waggles and setting down the club all produce drops
+comparable to the swing" — now with a measured example and a golfer's account
+of what the motion was.
+
+**Where that points.** The swing is not merely a fast descent; it is a fast
+descent *out of a settled address*. The body-speed structure sketched above
+already separates `walk in | settle+swing | walk back`, and bounding the search
+to after the golfer settles is exactly what `detect_address_onset()` (P0.2) is
+for. That makes P1.4 and P0.2 one problem rather than two — which is a change
+in the plan, not a detail, and should be decided deliberately rather than
+drifted into.
 
 **What unblocks this: labels, and they are cheap.** Noting the second at which
 each swing happens converts every question above from taste into measurement.
