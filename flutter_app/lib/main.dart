@@ -9,6 +9,7 @@ import 'src/analysis/participant.dart';
 import 'src/models/drill.dart';
 import 'src/services/drill_library_loader.dart';
 import 'src/ui/record_screen.dart';
+import 'src/ui/theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -75,16 +76,8 @@ class GolfSwingApp extends StatelessWidget {
     return MaterialApp(
       title: 'Golf Swing Analyzer',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF2E7D32),
-        useMaterial3: true,
-        brightness: Brightness.light,
-      ),
-      darkTheme: ThemeData(
-        colorSchemeSeed: const Color(0xFF2E7D32),
-        useMaterial3: true,
-        brightness: Brightness.dark,
-      ),
+      theme: appTheme,
+      darkTheme: appTheme,
       home: RecordScreen(
         drills: drills,
         cameras: cameras,

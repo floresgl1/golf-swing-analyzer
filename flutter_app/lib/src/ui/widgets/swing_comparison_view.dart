@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../analysis/swing_history.dart';
+import '../theme/app_theme.dart';
 
 /// "Last swing vs this swing" card for the report screen.
 ///
@@ -29,7 +30,7 @@ class SwingComparisonView extends StatelessWidget {
           children: [
             Text('Last swing vs this swing',
                 style: theme.textTheme.titleMedium),
-            const SizedBox(height: 4),
+            Gap.xs,
             Text(
               'Compared with the session from '
               '${previousDate.year}-${_two(previousDate.month)}-${_two(previousDate.day)} '
