@@ -21,9 +21,11 @@
 library;
 
 import 'dart:io';
+import 'dart:ui' show Rect;
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// A retained recording.
 class StoredClip {
@@ -42,6 +44,31 @@ class StoredClip {
     required this.sizeBytes,
     required this.modified,
   });
+}
+
+/// Hand one retained clip to the system share sheet.
+///
+/// The Files route was supposed to be enough — `UIFileSharingEnabled` exposes
+/// the Documents directory, and that is genuinely where the clips are. On
+/// device 2026-08-19 it was not enough: the app reported "3 recordings, 18 MB"
+/// while the golfer could not find the folder in Files at all. Rather than
+/// keep guessing at the Files browser, this offers the clip through the same
+/// share sheet the corpus export already uses.
+///
+/// The useful destination is **Save Video**, which puts the clip in Photos —
+/// where there is a frame-accurate scrubber. Labelling a swing means reading
+/// times off a scrubber, so Photos is a better answer than Files was.
+///
+/// [origin] must be a non-degenerate rect inside the presenting view or iOS
+/// rejects the whole share; see `shareOriginOrFallback` in `corpus_export.dart`
+/// for the two conditions and what they cost to learn.
+Future<void> shareClip(StoredClip clip, {required Rect origin}) {
+  return Share.shareXFiles(
+    [XFile(clip.path, mimeType: 'video/mp4')],
+    subject: clip.name,
+    text: 'Swing recording ${clip.name}',
+    sharePositionOrigin: origin,
+  );
 }
 
 /// Total size of a set of clips, formatted for a person rather than a machine.
