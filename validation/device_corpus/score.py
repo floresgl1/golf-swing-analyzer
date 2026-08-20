@@ -103,7 +103,8 @@ def score_coarse(entry: dict, record: dict, window: float) -> dict:
     results = detector_results(record)
 
     scored = {"timestamp": entry["timestamp"], "fps": fps,
-              "start": start, "window": window, "detectors": {}}
+              "start": start, "window": window,
+              "basis": entry.get("label_basis"), "detectors": {}}
     for name, result in results.items():
         if result is None:
             scored["detectors"][name] = None
@@ -123,8 +124,9 @@ def score_coarse(entry: dict, record: dict, window: float) -> dict:
 
 def print_coarse(scored: list[dict]) -> None:
     for swing in scored:
+        basis = swing.get("basis") or "basis unrecorded"
         print(f"\n{swing['timestamp']}  swing starts ~{swing['start']:.1f}s "
-              f"(+/-{swing['window']:.1f}s)")
+              f"(+/-{swing['window']:.1f}s)  [read from {basis}]")
         for name, result in swing["detectors"].items():
             if result is None:
                 print(f"  {name:<16} returned nothing")
@@ -137,13 +139,24 @@ def print_coarse(scored: list[dict]) -> None:
                 print(f"      {event:<9} {at:6.2f}s   {away:+6.2f}s from the "
                       f"labelled start")
 
+    # Split by basis rather than pooled. A sheet-read label is derived from
+    # the same series the detector consumes, so it cannot fully falsify a
+    # detector that is wrong about what that series means; averaging it with a
+    # video-read label would launder that weakness into a single number.
     print("\n" + "=" * 62)
-    for name in ("detect_phases", "locate_swing"):
-        judged = [s["detectors"][name] for s in scored if s["detectors"].get(name)]
-        if not judged:
+    for basis in ("video", "sheet", None):
+        subset = [s for s in scored if s.get("basis") == basis]
+        if not subset:
             continue
-        ok = sum(1 for r in judged if r["consistent"])
-        print(f"{name:<16} found the swing on {ok}/{len(judged)} swings")
+        label = basis or "basis unrecorded"
+        print(f"labels read from {label}:")
+        for name in ("detect_phases", "locate_swing"):
+            judged = [s["detectors"][name] for s in subset
+                      if s["detectors"].get(name)]
+            if not judged:
+                continue
+            ok = sum(1 for r in judged if r["consistent"])
+            print(f"  {name:<16} found the swing on {ok}/{len(judged)}")
 
 
 def score_swing(entry: dict, record: dict) -> dict:

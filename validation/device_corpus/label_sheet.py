@@ -207,6 +207,11 @@ def write_template(swings: list[dict], path: Path) -> None:
             # sheets' x-axis reads. Frames are derived at scoring time. Asking
             # a human to transcribe frame indices from a video player is asking
             # for a class of error that does not need to exist.
+            # 'video' = somebody watched the clip, independent of the series
+            # the detectors read. 'sheet' = somebody read the plot, which is
+            # derived from that same series. Not equal evidence; kept apart.
+            "label_basis": prior.get("label_basis"),
+            "swing_start_s": prior.get("swing_start_s"),
             "takeaway_s": prior.get("takeaway_s"),
             "top_s": prior.get("top_s"),
             "impact_s": prior.get("impact_s"),
