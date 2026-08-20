@@ -10,6 +10,7 @@ import '../models/drill.dart';
 import '../services/clip_store.dart';
 import '../services/swing_analyzer.dart';
 import 'report_screen.dart';
+import 'theme/app_theme.dart';
 
 /// Runs the analysis pipeline on the recorded video, shows progress, then
 /// replaces itself with the report (or an error).
@@ -199,7 +200,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
                             : null,
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    Gap.lg,
                     Text(_stageLabel,
                         style: Theme.of(context).textTheme.titleMedium),
                   ],
@@ -223,9 +224,9 @@ class _ErrorView extends StatelessWidget {
       children: [
         Icon(Icons.error_outline,
             size: 48, color: Theme.of(context).colorScheme.error),
-        const SizedBox(height: 16),
+        Gap.md,
         Text(message, textAlign: TextAlign.center),
-        const SizedBox(height: 24),
+        Gap.lg,
         FilledButton(onPressed: onBack, child: const Text('Record again')),
       ],
     );
