@@ -726,6 +726,29 @@ Clips travel by the Files app, **not** the corpus export — the share sheet
 carries the measurements, and putting hundreds of megabytes of video through it
 would break the one path P0.1 depends on.
 
+**The Files route did not reach the golfer, and a share route was added
+(2026-08-19).** The app correctly reported "3 recordings, 18 MB" — read
+straight off the directory — while the folder could not be found in Files at
+all. Note the corpus file `swing_history.jsonl` sits at the top level of the
+same Documents directory, so this is not about clips being in a subfolder: the
+app's folder itself is not appearing under On My iPhone. `UIFileSharingEnabled`
+and `LSSupportsOpeningDocumentsInPlace` are verifiably in the shipped plist
+(the patcher asserts them after writing), and `getApplicationDocumentsDirectory()`
+verifiably maps to `NSDocumentDirectory` (checked in
+`path_provider_foundation_real.dart`), so the cause is on the iOS side —
+provider-list caching or navigation — not in anything the app controls.
+
+Rather than keep guessing at the Files browser across round trips, `Profile >
+Saved videos` now lists each clip and shares it through the same sheet the
+corpus export uses. **The useful destination is "Save Video", which puts the
+clip in Photos** — where there is a frame-accurate scrubber. Labelling a swing
+means reading times off a scrubber, so Photos is a better answer than Files
+was, not merely a workaround for it.
+
+Files is kept as the second path, not removed. Two independent routes off the
+device is the same lesson P1.2 taught: the share sheet cost four builds to
+platform quirks, and the fallback is what made it recoverable.
+
 **Retention verified on device 2026-08-19 (build 17).** Three swings recorded
 after the update came back carrying `clip_name`
 (`swing_20260819_193824.mp4` and two more), so the clips are on the phone and
