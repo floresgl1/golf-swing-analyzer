@@ -16,11 +16,19 @@ carries eye/shoulder/hip/wrist tracks for every frame, which is enough to
 SEE the swing -- the walk-in wanders, the address holds still, the swing is
 the one violent excursion. That is what this renders.
 
+**Since 2026-08-19 the app keeps the video** (`clip_store.dart`), so newer
+swings can be labelled the easy way: open the clip named in the sheet
+title from Files > On My iPhone > Fore Swing > clips, and read the seconds
+off the scrubber. The sheets stay useful for those too — they show what
+the detector saw, next to what you saw. The five recordings of 2026-08-17
+predate retention and remain label-from-data only.
+
 Read a sheet, find the swing, and write the frame numbers into
 labels.json (see --write-template) as ground truth for P1.4.
 
   python validation/device_corpus/label_sheet.py
   python validation/device_corpus/label_sheet.py --write-template
+  python validation/device_corpus/label_sheet.py --corpus path/to/export.jsonl
 
 Deliberately NOT here: any automatic guess at the swing location overlaid
 on the plot. locate_swing() is the thing these labels exist to judge, and
@@ -38,7 +46,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[2]
-CORPUS = REPO / "tests" / "fixtures" / "device_corpus_2026_08_17.jsonl"
+# Every committed capture, oldest first. Split by capture date rather than
+# merged into one file: each export overlaps the last, and a merged corpus
+# would either duplicate records or need de-duplicating on a field no writer
+# guarantees is unique.
+CORPORA = sorted((REPO / "tests" / "fixtures").glob("device_corpus_*.jsonl"))
 OUT_DIR = REPO / "validation" / "device_corpus" / "sheets"
 LABELS = REPO / "validation" / "device_corpus" / "labels.json"
 
@@ -57,7 +69,7 @@ def load_swings(path: Path) -> list[dict]:
     return records
 
 
-def render(index: int, swing: dict, out_dir: Path) -> Path:
+def render(slug: str, swing: dict, out_dir: Path) -> Path:
     """One sheet: the whole clip, twice, plus what was actually tracked."""
     frames = swing["frames"]
     wrist_y = np.array(frames["wrist_y"], dtype=float)
@@ -87,10 +99,13 @@ def render(index: int, swing: dict, out_dir: Path) -> Path:
     ax_px.set_ylabel("image y (px)\nup = up")
     ax_px.legend(loc="upper right", fontsize=8)
     ax_px.grid(alpha=0.3)
+    # The clip name is the point of the title on any swing that has one: it
+    # says which file to open in Files to watch this swing back.
+    clip = swing.get("clip_name")
+    source = clip if clip else "no clip kept -- label from this sheet alone"
     ax_px.set_title(
-        f"swing {index}  --  {swing['timestamp']}  --  "
-        f"{n} frames @ {fps:.2f}fps ({n / fps:.1f}s)  --  "
-        f"pose_coverage {swing['pose_coverage']:.2f}"
+        f"{swing['timestamp']}  --  {n} frames @ {fps:.2f}fps ({n / fps:.1f}s)"
+        f"  --  pose_coverage {swing['pose_coverage']:.2f}\n{source}"
     )
 
     top = ax_px.secondary_xaxis(
@@ -124,7 +139,7 @@ def render(index: int, swing: dict, out_dir: Path) -> Path:
     ax_gaps.grid(axis="x", alpha=0.3)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"swing_{index}.png"
+    out = out_dir / f"{slug}.png"
     fig.tight_layout()
     fig.savefig(out, dpi=110)
     plt.close(fig)
@@ -142,54 +157,87 @@ def _clip_to_body(ax, values: np.ndarray) -> None:
     ax.set_ylim(hi + margin, lo - margin)
 
 
+def slug_for(swing: dict) -> str:
+    """Stable sheet name for a swing: its clip, or its timestamp.
+
+    Never a position in the file. Sheets are regenerated as new exports land,
+    and a positional name would silently re-point at a different swing the
+    first time a record was added anywhere but the end.
+    """
+    clip = swing.get("clip_name")
+    if clip:
+        return Path(clip).stem
+    stamp = swing["timestamp"]
+    for ch in ("-", ":", "+"):
+        stamp = stamp.replace(ch, "")
+    return "swing_" + stamp.replace("T", "_")[:15]
+
+
 def write_template(swings: list[dict], path: Path) -> None:
-    """A labels.json with the slots empty, so filling it in is the only work."""
+    """A labels.json with the slots empty, so filling it in is the only work.
+
+    Existing labels are carried over: regenerating after a new export must not
+    silently discard work someone already did.
+    """
+    existing = {}
+    if path.exists():
+        previous = json.loads(path.read_text())
+        for entry in previous.get("swings", []):
+            existing[entry.get("timestamp")] = entry
+
     template = {
-        "source": str(CORPUS.relative_to(REPO)),
         "note": (
-            "Frame indices into frames.* of the corresponding record. "
-            "null means 'not visible / cannot tell' -- leave it null rather "
-            "than guessing; a guessed label is worse than a missing one."
+            "Frame indices into frames.* of the record with the matching "
+            "timestamp. null means 'not visible / cannot tell' -- leave it "
+            "null rather than guessing; a guessed label is worse than a "
+            "missing one. `clip_name` is the video in Files this swing came "
+            "from, or null for captures made before the app kept them."
         ),
-        "swings": [
-            {
-                "index": i,
-                "timestamp": s["timestamp"],
-                "frame_count": s["frame_count"],
-                "fps": s["fps"],
-                "takeaway": None,
-                "top": None,
-                "impact": None,
-                "finish": None,
-            }
-            for i, s in enumerate(swings)
-        ],
+        "swings": [],
     }
+    for swing in swings:
+        prior = existing.get(swing["timestamp"], {})
+        template["swings"].append({
+            "timestamp": swing["timestamp"],
+            "clip_name": swing.get("clip_name"),
+            "sheet": f"sheets/{slug_for(swing)}.png",
+            "frame_count": swing["frame_count"],
+            "fps": swing["fps"],
+            "takeaway": prior.get("takeaway"),
+            "top": prior.get("top"),
+            "impact": prior.get("impact"),
+            "finish": prior.get("finish"),
+        })
     path.write_text(json.dumps(template, indent=2) + "\n")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--corpus", type=Path, default=CORPUS)
+    parser.add_argument("--corpus", type=Path, nargs="+", default=CORPORA)
     parser.add_argument("--out", type=Path, default=OUT_DIR)
     parser.add_argument(
         "--write-template",
         action="store_true",
-        help="also write an empty labels.json next to the sheets",
+        help="also write labels.json, carrying over any labels already there",
     )
     args = parser.parse_args()
 
-    swings = load_swings(args.corpus)
-    for i, swing in enumerate(swings):
-        out = render(i, swing, args.out)
-        print(f"swing {i}: {swing['frame_count']} frames -> {out}")
+    swings: list[dict] = []
+    for corpus in args.corpus:
+        found = load_swings(corpus)
+        print(f"{corpus.name}: {len(found)} swings")
+        swings.extend(found)
+    swings.sort(key=lambda s: s["timestamp"])
+
+    for swing in swings:
+        out = render(slug_for(swing), swing, args.out)
+        clip = swing.get("clip_name") or "no clip"
+        print(f"  {swing['timestamp']}  {swing['frame_count']:>4} frames  "
+              f"{clip}  -> {out.name}")
 
     if args.write_template:
-        if LABELS.exists():
-            print(f"{LABELS} exists; not overwriting")
-        else:
-            write_template(swings, LABELS)
-            print(f"wrote {LABELS}")
+        write_template(swings, LABELS)
+        print(f"wrote {LABELS}")
 
 
 if __name__ == "__main__":

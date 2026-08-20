@@ -726,6 +726,33 @@ Clips travel by the Files app, **not** the corpus export — the share sheet
 carries the measurements, and putting hundreds of megabytes of video through it
 would break the one path P0.1 depends on.
 
+**Retention verified on device 2026-08-19 (build 17).** Three swings recorded
+after the update came back carrying `clip_name`
+(`swing_20260819_193824.mp4` and two more), so the clips are on the phone and
+joined to their measurements. Committed as
+`tests/fixtures/device_corpus_2026_08_19.jsonl`.
+
+**The written join earned itself immediately.** The clip is named when the
+recording is retained; the record's `timestamp` is minted when analysis
+finishes. On these three that gap is **8, 8 and 10 seconds** —
+`swing_20260819_193824.mp4` belongs to the record stamped `19:38:32`. Any join
+derived from the timestamp would already be matching swings to the wrong
+videos, silently. This is why the field is written rather than computed.
+
+**The detector is still nowhere near the swing.** On the three new clips,
+against swings that are plainly visible on the sheets at ~6.2-7.5 s, ~7 s and
+~8-9.5 s:
+
+```
+clip                        takeaway   top    impact   finish   length
+swing_20260819_193824.mp4     0.0 s   0.4 s   0.7 s   12.1 s   12.6 s
+swing_20260819_193851.mp4     0.1 s   0.1 s  11.3 s   11.8 s   12.4 s
+swing_20260819_193916.mp4     0.0 s   0.2 s   1.9 s   13.4 s   13.9 s
+```
+
+Eight recordings now, and `detect_phases` has anchored in the walk-in on every
+single one. P1.3 is not an edge case.
+
 **They can still be labelled, from the data instead of the video.**
 `validation/device_corpus/label_sheet.py` renders one sheet per recording from
 the committed per-frame series: wrist/shoulder/hip in image pixels with the

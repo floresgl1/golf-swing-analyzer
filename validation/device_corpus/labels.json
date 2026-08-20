@@ -1,10 +1,10 @@
 {
-  "source": "tests/fixtures/device_corpus_2026_08_17.jsonl",
-  "note": "Frame indices into frames.* of the corresponding record. null means 'not visible / cannot tell' -- leave it null rather than guessing; a guessed label is worse than a missing one.",
+  "note": "Frame indices into frames.* of the record with the matching timestamp. null means 'not visible / cannot tell' -- leave it null rather than guessing; a guessed label is worse than a missing one. `clip_name` is the video in Files this swing came from, or null for captures made before the app kept them.",
   "swings": [
     {
-      "index": 0,
       "timestamp": "2026-08-17T07:12:22-07:00",
+      "clip_name": null,
+      "sheet": "sheets/swing_20260817_071222.png",
       "frame_count": 167,
       "fps": 29.97002997002997,
       "takeaway": null,
@@ -13,8 +13,9 @@
       "finish": null
     },
     {
-      "index": 1,
       "timestamp": "2026-08-17T07:51:50-07:00",
+      "clip_name": null,
+      "sheet": "sheets/swing_20260817_075150.png",
       "frame_count": 479,
       "fps": 29.97002997002997,
       "takeaway": null,
@@ -23,8 +24,9 @@
       "finish": null
     },
     {
-      "index": 2,
       "timestamp": "2026-08-17T07:53:41-07:00",
+      "clip_name": null,
+      "sheet": "sheets/swing_20260817_075341.png",
       "frame_count": 462,
       "fps": 29.97002997002997,
       "takeaway": null,
@@ -33,8 +35,9 @@
       "finish": null
     },
     {
-      "index": 3,
       "timestamp": "2026-08-17T07:54:23-07:00",
+      "clip_name": null,
+      "sheet": "sheets/swing_20260817_075423.png",
       "frame_count": 490,
       "fps": 29.97002997002997,
       "takeaway": null,
@@ -43,9 +46,43 @@
       "finish": null
     },
     {
-      "index": 4,
       "timestamp": "2026-08-17T07:55:17-07:00",
+      "clip_name": null,
+      "sheet": "sheets/swing_20260817_075517.png",
       "frame_count": 554,
+      "fps": 29.97002997002997,
+      "takeaway": null,
+      "top": null,
+      "impact": null,
+      "finish": null
+    },
+    {
+      "timestamp": "2026-08-19T19:38:32-07:00",
+      "clip_name": "swing_20260819_193824.mp4",
+      "sheet": "sheets/swing_20260819_193824.png",
+      "frame_count": 377,
+      "fps": 29.97002997002997,
+      "takeaway": null,
+      "top": null,
+      "impact": null,
+      "finish": null
+    },
+    {
+      "timestamp": "2026-08-19T19:38:59-07:00",
+      "clip_name": "swing_20260819_193851.mp4",
+      "sheet": "sheets/swing_20260819_193851.png",
+      "frame_count": 373,
+      "fps": 29.97002997002997,
+      "takeaway": null,
+      "top": null,
+      "impact": null,
+      "finish": null
+    },
+    {
+      "timestamp": "2026-08-19T19:39:26-07:00",
+      "clip_name": "swing_20260819_193916.mp4",
+      "sheet": "sheets/swing_20260819_193916.png",
+      "frame_count": 417,
       "fps": 29.97002997002997,
       "takeaway": null,
       "top": null,
