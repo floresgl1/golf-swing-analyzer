@@ -87,14 +87,6 @@ def test_implausible_swing_accepts_a_normal_swing():
     assert implausible_swing(phases) is None
 
 
-def test_implausible_swing_rejects_the_device_case():
-    # The trajectory the app actually reported from a clip containing no swing:
-    # backswing 6 frames, downswing 58, ratio 0.1:1.
-    phases = {'takeaway': 0, 'top': 6, 'impact': 64, 'finish': 100}
-    reason = implausible_swing(phases)
-    assert reason is not None
-    assert 'downswing' in reason
-
 
 def test_implausible_swing_rejects_zero_duration_backswing():
     phases = {'takeaway': 5, 'top': 5, 'impact': 20, 'finish': 40}
@@ -110,15 +102,88 @@ def test_implausible_swing_rejects_no_phases():
     assert implausible_swing(None) is not None
 
 
-def test_implausible_swing_boundary_is_at_the_inversion_point():
-    """Equal halves reject; one frame either side of that decides it.
 
-    The gate is deliberately loose -- it rejects only what cannot be a swing,
-    not what is merely an odd one. 11:10 is a strange tempo and still passes,
-    because judging *how good* a tempo is needs the P0.1 corpus.
+
+# Phase indices recomputed from the first five real recordings off a phone
+# (2026-08-17, 30 fps). Every one has a tempo ratio below 1:1 -- the detector
+# places `top` in the first half-second of a 15-18 second clip -- so the
+# tempo-inversion check that used to live in implausible_swing rejected three
+# of the four genuine swings. The gate must let all of these through: they are
+# badly *analysed*, which is P1.3's problem, not absent.
+DEVICE_PHASES_2026_08_17 = [
+    {'takeaway': 0, 'top': 4, 'impact': 63, 'finish': 138},    # clip of nothing
+    {'takeaway': 0, 'top': 1, 'impact': 443, 'finish': 456},   # real swing
+    {'takeaway': 0, 'top': 15, 'impact': 66, 'finish': 412},   # real swing
+    {'takeaway': 0, 'top': 130, 'impact': 265, 'finish': 474}, # real swing
+    {'takeaway': 0, 'top': 8, 'impact': 526, 'finish': 540},   # real swing
+]
+
+
+@pytest.mark.parametrize('phases', DEVICE_PHASES_2026_08_17)
+def test_implausible_swing_accepts_real_device_recordings(phases):
+    assert implausible_swing(phases) is None
+
+
+# --- P1.4: characterization of locate_swing against real device data ---------
+# Pins CURRENT behaviour on the five real recordings so any change to
+# locate_swing is visible in a diff. These are NOT assertions that the values
+# are correct -- nobody has labelled where the swings actually are. See P1.4.
+
+import os
+
+FIXTURE = os.path.join(os.path.dirname(__file__), 'fixtures',
+                       'device_corpus_2026_08_17.jsonl')
+
+
+def _device_recordings():
+    import json
+    out = []
+    with open(FIXTURE) as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            if rec.get('record') == 'header':
+                continue
+            out.append(rec)
+    return out
+
+
+def test_locate_swing_places_events_inside_the_clip():
+    """The weakest claim that is actually true: events are ordered and in range.
+
+    Deliberately not pinning frame numbers. The values are unvalidated, and a
+    test asserting them would look like evidence they are right.
     """
-    equal = {'takeaway': 0, 'top': 10, 'impact': 20, 'finish': 30}
-    assert implausible_swing(equal) is not None
+    from swing_phases import locate_swing
+    for rec in _device_recordings():
+        frames = rec['frames']
+        wrist = [float('nan') if v is None else v for v in frames['wrist_y']]
+        torso = [float('nan') if v is None else v for v in frames['torso']]
+        phases = locate_swing(wrist, torso, rec['fps'])
+        assert phases is not None
+        n = len(wrist)
+        assert 0 <= phases['takeaway'] <= phases['top'] <= phases['impact'] \
+            <= phases['finish'] < n
 
-    barely_valid = {'takeaway': 0, 'top': 11, 'impact': 21, 'finish': 30}
-    assert implausible_swing(barely_valid) is None
+
+def test_locate_swing_beats_peak_localization_on_real_clips():
+    """The one comparative claim the data does support.
+
+    Peak-based localization put `top` in the first half-second of 15-18 second
+    clips (frames 1, 4, 8, 15). Anchoring on the downswing does not.
+    """
+    from swing_phases import detect_phases, locate_swing
+    for rec in _device_recordings()[1:]:  # skip the clip of nothing
+        frames = rec['frames']
+        wrist = [float('nan') if v is None else v for v in frames['wrist_y']]
+        torso = [float('nan') if v is None else v for v in frames['torso']]
+        fps = rec['fps']
+        peak_top = detect_phases(wrist, fps=fps)['top']
+        located_top = locate_swing(wrist, torso, fps)['top']
+        # Peak localization lands in the opening seconds of a 15-18 s clip
+        # (frames 1, 15, 130, 8 across the four); downswing anchoring lands
+        # hundreds of frames later. Assert only the ordering: WHERE the swing
+        # truly is remains unlabelled, so "later" is the strongest honest claim.
+        assert located_top > peak_top, (
+            f'peak_top={peak_top} located_top={located_top}')

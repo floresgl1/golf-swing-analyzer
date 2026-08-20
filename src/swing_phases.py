@@ -64,6 +64,33 @@ DEFAULT_RADIUS_S = 3 / BASELINE_FPS    # 0.012 s  <- was radius=3  (top/finish/i
 ADDRESS_OFFSET_S = 10 / BASELINE_FPS   # 0.042 s  <- was takeaway-10  (SEE KNOWN ISSUE)
 
 
+# --------------------------------------------------------------------------- #
+# Swing localization in a long clip (P1.3, 2026-08-17)
+#
+# Filming yourself means the clip contains a walk-in, the swing, and a walk-back:
+# the first five real recordings ran 15-18 s for a 1-2 s swing. `detect_phases`
+# anchors `top` on the FIRST peak clearing half the height range, which in a
+# 16 s clip is incidental hand movement during setup -- it put `top` at frames
+# 1, 4, 8 and 15, so every fault value was measured between meaningless anchors.
+#
+# The fix is a different anchor. A golf swing's unmistakable signature is not a
+# tall peak, it is the FASTEST DOWNWARD WRIST MOTION in the clip: nothing else a
+# golfer does between walking in and walking out drops the lead wrist that hard.
+# Locate that, then read the other events off it within bounded look-arounds.
+#
+# These bounds are DURATIONS, in seconds, so they are frame-rate invariant like
+# the P0.3 windowing constants. They are generous limits on swing geometry -- a
+# backswing does not take 2 s, a downswing does not take 1 s -- and NOT tuned
+# thresholds on a measured quantity. Nothing here borrows against the P0.1
+# corpus: widen them and the answer does not drift, it only admits clips that
+# were never swings.
+DESCENT_SMOOTH_S = 0.10    # smoothing for wrist height and its derivative
+TOP_SEARCH_S = 1.5         # look back from the steepest descent for the top
+IMPACT_SEARCH_S = 1.0      # look forward from the top for impact
+TAKEAWAY_SEARCH_S = 2.0    # look back from the top for the takeaway
+FINISH_SEARCH_S = 1.5      # look forward from impact for the finish
+
+
 def frames_for(seconds, fps, minimum=1, odd=False):
     """Convert a duration in seconds to a frame count at the given fps.
 
@@ -113,7 +140,7 @@ def _moving_average(a, w):
     return np.convolve(padded, kernel, mode='valid')[:len(a)]
 
 
-def detect_phases(wrist_y, fps=BASELINE_FPS, smooth=None):
+def detect_phases(wrist_y, fps=BASELINE_FPS, smooth=None, torso=None):
     """Locate the key swing events from the lead-wrist vertical trajectory.
 
     Works on wrist *height* (1 - y, so up is positive), which rises through the
@@ -124,6 +151,15 @@ def detect_phases(wrist_y, fps=BASELINE_FPS, smooth=None):
     frame count at `fps`; at BASELINE_FPS this is the historic smooth=5. Pass an
     explicit `smooth` to override the frame count directly.
     """
+    # Opt-in, because it needs a signal the historic call sites do not pass.
+    # Without `torso` the original peak-based localization runs unchanged, which
+    # is what the calibration clip and the existing tests exercise; with it, a
+    # real phone clip gets an anchor that survives a walk-in. See locate_swing.
+    if torso is not None:
+        located = locate_swing(wrist_y, torso, fps)
+        if located is not None:
+            return located
+
     if smooth is None:
         smooth = frames_for(SMOOTH_WINDOW_S, fps, odd=True)
     y = np.array(wrist_y, dtype=float)
@@ -178,14 +214,12 @@ def implausible_swing(phases):
       - The events must be strictly ordered. `detect_phases` guarantees only
         takeaway <= top <= impact by construction; equality means a phase has
         zero duration, which is not a swing that happened.
-      - The backswing must outlast the downswing. The downswing is gravity- and
-        release-assisted and is universally the faster half — tour players
-        average ~3:1 and amateurs less, but the ordering itself does not
-        invert. This is an empirical invariant of golf swings rather than a law
-        of physics, so it is deliberately set AT the inversion point: it
-        rejects 0.1:1, and passes 1.1:1 even though that is a strange swing.
-        Judging *how good* a tempo is needs the corpus; judging that a swing
-        took ten times longer coming down than going up does not.
+
+    REMOVED 2026-08-17: a tempo-inversion check (backswing must outlast the
+    downswing) lived here and rejected 3 of the first 4 real swings measured on
+    a phone. It rested on the detected phases meaning something; on real device
+    clips they do not. See P1.3 in ROADMAP.md. Do not reinstate it without
+    fixing phase location first.
 
     Deliberately NOT checked here: anything needing a calibrated number. If a
     proposed check requires a constant only P0.1 can supply, it belongs in P0.2.
@@ -204,14 +238,85 @@ def implausible_swing(phases):
         return ('the downswing has no duration (top and impact are the same '
                 'frame)')
 
-    backswing_frames = top - takeaway
-    downswing_frames = impact - top
-    if backswing_frames <= downswing_frames:
-        return (f'the downswing ({downswing_frames} frames) is not shorter '
-                f'than the backswing ({backswing_frames} frames), which does '
-                'not happen in a golf swing')
-
     return None
+
+
+
+def locate_swing(wrist_y, torso, fps):
+    """Locate the four swing events by anchoring on the downswing.
+
+    *** NOT VALIDATED. NOT USED BY THE APP. DO NOT ENABLE WITHOUT READING
+    P1.4 IN ROADMAP.md. ***
+
+    This is demonstrably better than the peak-based localization on the five
+    real recordings -- it puts the events inside the swing rather than at
+    frame 1 -- and it is still a heuristic tuned by eye against clips whose
+    true swing frames nobody has labelled. Its answer moves when
+    DESCENT_SMOOTH_S moves: at 0.05 s the anchor for one clip is frame 447,
+    at 0.10 s it is 272. A constant that swings the answer by six seconds is
+    doing real work, which contradicts the "no calibration debt" claim the
+    block comment above makes for the others.
+
+    Returns the same dict as `detect_phases`, or None when the trajectory is
+    too short or has no usable pose.
+
+    Why this exists, and why it anchors where it does, is in the block comment
+    above the *_SEARCH_S constants. In one line: `detect_phases` looks for the
+    first tall wrist peak, and in a clip that contains a walk-in that peak is
+    not the top of the backswing.
+
+    `torso` is required because the descent rate is normalised by torso length,
+    making it torso-lengths per second -- scale-invariant, so it does not depend
+    on the golfer's distance from the camera or the video's resolution. That is
+    the same normalisation the fault detectors use.
+    """
+    y = np.array(wrist_y, dtype=float)
+    t = np.array(torso, dtype=float)
+    n = len(y)
+    if n < 3 or len(t) != n:
+        return None
+
+    idx = np.arange(n)
+    good = ~np.isnan(y)
+    if good.sum() < 2:
+        return None
+    y = np.interp(idx, idx[good], y[good])
+
+    good_t = ~np.isnan(t)
+    if good_t.sum() < 1:
+        return None
+    t = np.interp(idx, idx[good_t], t[good_t])
+    t = np.maximum(t, 1e-6)
+
+    w = frames_for(DESCENT_SMOOTH_S, fps, odd=True)
+    height = _moving_average(-y, w)
+
+    # Descent rate in torso-lengths per second; most negative = fastest drop.
+    rate = np.zeros(n)
+    rate[1:] = np.diff(height) / t[1:] * fps
+    rate = _moving_average(rate, w)
+
+    steepest = int(np.argmin(rate))
+
+    def _back(frm, seconds):
+        return max(0, frm - frames_for(seconds, fps))
+
+    def _fwd(frm, seconds):
+        return min(n, frm + frames_for(seconds, fps) + 1)
+
+    lo = _back(steepest, TOP_SEARCH_S)
+    top = lo + int(np.argmax(height[lo:steepest + 1]))
+
+    hi = _fwd(top, IMPACT_SEARCH_S)
+    impact = top + int(np.argmin(height[top:hi])) if hi > top else top
+
+    lo2 = _back(top, TAKEAWAY_SEARCH_S)
+    takeaway = lo2 + int(np.argmin(height[lo2:top + 1])) if top > lo2 else lo2
+
+    hi2 = _fwd(impact, FINISH_SEARCH_S)
+    finish = impact + int(np.argmax(height[impact:hi2])) if hi2 > impact else impact
+
+    return {'takeaway': takeaway, 'top': top, 'impact': impact, 'finish': finish}
 
 
 def swing_tempo(phases, fps):

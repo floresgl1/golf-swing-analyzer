@@ -300,7 +300,7 @@ Why blocked: step 2 has no ground truth without the corpus. Doing step 1 alone s
 - Remaining seam: `main()` still uses container fps and pins windowing to `BASELINE_FPS`. When P0.1 lands a `capture_fps` metadata field per video (defaulting to `CAP_PROP_FPS` when they agree), thread it into `detect_phases`/detectors — that is the point where slow-mo vs real-time stops being a hidden variable.
 - **Left-handed golfers**: `HANDEDNESS` is a module constant with no per-run override — lefties are analyzed on the trail wrist (garbage phases). Parameterize before admitting lefties to the corpus.
 
-#### P0.4 — The Python threshold tests are vacuous — audit before recalibrating (2026-07-31)
+#### P0.4 — The Python threshold tests were vacuous — FIXED 2026-08-19
 
 **`tests/test_faults.py` cannot detect a threshold change. This is measured, not suspected.** All four constants were mutated at once — `SWAY_THRESHOLD` 0.13→0.20, `REVERSE_PIVOT_THRESHOLD` 0.12→0.30, `EARLY_EXTENSION_THRESHOLD` 0.10→0.40, `POSTURE_THRESHOLD` 12.0→30.0, i.e. up to **3×** — and the suite stayed green:
 
@@ -346,6 +346,63 @@ So a metric exactly at its threshold is specified as **not** flagged, and an ang
 The `>=` comparisons elsewhere in `src/` are a different kind and are not counter-examples: they are tie-breaks and bounds guards (`faults.py:139` `hip_fin >= hip_addr` resolving the static-hip tie to `+1.0`, `faults.py:348` `len(path) >= 2`, the `swing_phases.py` fps/window guards), not verdicts. The `faults.py:139` tie-break is the one place equality is deliberately resolved to the positive side, and it is itself unverified — confirm it is intended when recalibrating, because it decides which way "toward target" points.
 
 **Method, for whoever redoes this audit:** mutate a constant in `src/faults.py`, run pytest, confirm the suite goes red, restore the constant. If it stays green, the test is vacuous. This same property was independently reproduced in a generated characterization file during a sub-agent probe; that file was deleted and the finding above rests on `tests/test_faults.py` alone, which predates it.
+
+**FIXED 2026-08-19.** `tests/test_faults.py` no longer imports the thresholds at all. Each detector is probed with a table of absolute values written out by hand — clearly below, exactly on the boundary, a hair above, clearly above — and the constant it straddles is named only in a comment.
+
+**The vacuity was worse than recorded before it was fixed.** The note above claims `tests/test_faults.py` stayed green under mutation. Re-run on 2026-08-19 with all four constants mutated at once: **the entire suite, 81 tests, stayed green.** No test anywhere in `tests/` could see a 3× threshold change.
+
+**Verified by mutation, one constant at a time** — the step the old file never had. Each threshold was moved and `tests/test_faults.py` re-run:
+
+```
+                       sway  dip  reverse  early-ext  posture
+downward, 1 ULP        RED   RED  RED      RED        RED
+upward, +0.0001        RED   ***  RED      ***        RED
+upward, +0.005         RED   RED  RED      RED        RED
+upward, 1.5-2.5x       RED    -    -        -         RED
+```
+
+The two directions are not symmetric, and the file says so: **any downward move is caught immediately** by the on-boundary probe, because the boundary value starts flagging. An **upward** move is only caught once it clears the nearest above-probe, so probe spacing is the resolution — the suite pins each boundary to within 0.0001, which is a bound, not a guarantee of zero.
+
+`***` marks the one degenerate case, recorded so it is not rediscovered as a bug: moving a threshold to land **exactly** on the hair-above probe value — `EARLY_EXTENSION_THRESHOLD` to 0.1001, `DIP_THRESHOLD` to 0.2501 — stays green, because whether the computed metric compares greater than it is then decided by floating-point rounding inside the detector. The other three go red at the same offset. Anywhere off a probe value the bound holds.
+
+**`DIP_THRESHOLD` had no test of any kind** and is the fifth threshold in `src/faults.py` — the audit above only ever counted four. It is informational rather than a verdict (`flagged` keys on sway alone) but is still printed, so a wrong constant is still a wrong claim shown to a golfer. It now has the same four probes as the rest, plus an assertion that a dip never sets the head-movement fault.
+
+**The equality convention is now tested.** The note below observes that nothing anywhere tested exact equality, which is the one input where a strict-vs-inclusive slip is invisible. Each detector now has an on-boundary probe asserting the value **exactly** (`== 0.13`, not `approx`) and asserting it does not flag. All four probe values divide exactly in IEEE double — 13/100, 12/100, 10/100, and `degrees(atan2(·, 100))` round-tripping 12.0 — so these are exact comparisons, not near-misses.
+
+**Incidental finding, not fixed:** three of the four detectors return a numpy bool for `flagged` and one returns a Python bool, so `is True` fails on three of them. The tests cast with `bool()`; the inconsistency in `src/faults.py` is left alone rather than changed under an unrelated commit.
+
+**The Dart side had the same defect, weaker but real — audited and FIXED 2026-08-19.** The note calling `flutter_app/test/faults_test.dart` "already structurally correct, and the model to copy" was right about *form* and wrong about *strength*. Its probes were absolute, which is the part worth copying. But:
+
+- **Every probe sat far from its boundary.** Sway was probed at 0.20 and 0.05 against a threshold of 0.13, so the constant could move anywhere in `(0.05, 0.20)` — a band 58% as wide as the constant itself — with the suite green. Confirmed by mutation: `swayThreshold` 0.13 → 0.18 was invisible.
+- **Only sway had a below-threshold probe at all.** Early extension, loss of posture and reverse pivot had flag-true cases only, so a threshold moved *down* to zero would still have passed.
+- **No on-boundary case anywhere**, the same equality gap the Python side had.
+- **One derived assertion survived:** `expect(r.reverse, greaterThan(reversePivotThreshold))` — the vacuous form, true for any threshold below the probe.
+- **`dipThreshold` was untested here too.**
+
+Rewritten to the same shape as the Python file — four probes per detector, thresholds named only in comments — and verified the same way, by mutating each of the five constants and re-running `flutter test`:
+
+```
+                       sway  dip  reverse  early-ext  posture
+downward, 1 ULP        RED   RED  RED      RED        RED
+upward, +0.0001        RED   ***  RED      RED        ***
+upward, +0.005 .. 2x   RED    -    -       RED        RED
+old blind spot (0.18)  RED    -    -        -          -
+```
+
+97 Dart tests pass; `flutter analyze` is clean on the file.
+
+Not a parity divergence to reconcile: probe values are test inputs, not detector constants, so the byte-parallel rule does not apply. The two suites agree on discipline, not on numbers.
+
+**A real (if tiny) numerical divergence surfaced while doing it.** The degenerate `***` case lands on *different detectors* in each language — Python is blind at early extension and catches posture; Dart is the reverse. Cause: Python computes `math.degrees(x)`, Dart computes `x * 180.0 / math.pi`, and the two round differently in the last place. Measured at a 12.001-degree tilt:
+
+```
+python  straighten = 12.001
+dart    straighten = 12.001000000000001
+```
+
+One ULP. It cannot change a verdict on any real swing — a golfer's spine angle is not measured to 15 significant figures — so this is recorded rather than fixed, so that the parity checker does not flag it as drift and a future session does not rediscover it.
+
+**Still open in P0.4:** `faults.py:139`'s `hip_fin >= hip_addr` tie-break — the one place equality resolves to the positive side, and the thing that decides which way "toward target" points — is still unverified, and `_fold`'s ±90 boundary (Architecture Notes) is still untested. Both are equality-convention gaps of the same family.
 
 ### P1 — Flutter Device Testing
 **Status**: In progress — app installed via TestFlight 2026-08-17, first finding below
@@ -403,12 +460,42 @@ Do **not** let this become a back door for guessed fault thresholds. The gate
 answers presence, not severity; if a proposed check needs a number that only
 the corpus can supply, it belongs in P0.2, not here.
 
-**Related defect — the tempo caveat is keyed on the wrong variable.**
-`report_screen.dart`'s `_tempoCaveat` branches on **fps alone**, so below 120 fps
-it always prints "the downswing spans only a few frames". On this report the
-detected downswing was **58 frames**. The hedge describes a condition that is
+**Related defect — the tempo caveat was keyed on the wrong variable. FIXED 2026-08-19.**
+`report_screen.dart`'s `_tempoCaveat` branched on **fps alone**, so below 120 fps
+it always printed "the downswing spans only a few frames". On this report the
+detected downswing was **58 frames**. The hedge described a condition that was
 not true, which spends credibility exactly where the user most needs to trust
-it. It should key on the detected frame counts, not the capture rate.
+it.
+
+It now keys on the frames the phases actually span, and rather than grading the
+swing against an invented cutoff it **states the precision it has**:
+`tempoRatioPrecision()` in `swing_phases.dart` returns
+`(1/backswing + 1/downswing) * ratio` — the events are located to the nearest
+frame, so each duration carries about a frame of slack, and relative errors add
+across a quotient. **No constant, and nothing borrowed from P0.1:** this is the
+arithmetic of counting in frames, not a judgement about golf.
+
+What the golfer now reads:
+
+```
+device 2026-08-17 (6 up, 58 down, 30fps)   ... within about 0.02 either way.
+a real swing      (27 up, 9 down, 30fps)   ... within about 0.4 either way.
+a 240fps swing    (216 up, 72 down)        ... within about 0.06 either way.
+```
+
+The middle row is the case the old hedge was reaching for and never actually
+detected; the first is the case it got wrong. Note the ordering is not by frame
+rate — the 30fps swing with a real downswing is the *least* precise of the
+three, which is exactly why keying on fps could not work.
+
+The number is printed at whatever precision it actually has and is never
+rounded up to a friendlier figure. A first draft of this clamped anything under
+0.1 up to "0.1"; overstating uncertainty is a smaller lie than understating it,
+but it is still a lie, and it was removed before commit.
+
+App-only: Python prints full verdicts and has no equivalent hedge, so there is
+nothing to port and this is not a parity divergence. Verified by mutating the
+precision formula three ways — all three go red.
 
 **What did work**, and is worth not re-testing: the camera permission prompt
 appeared with its usage string (the failure no compile check could catch, and
@@ -482,6 +569,216 @@ corpus appears under Files → On My iPhone → the app. That path depends on
 nothing but the filesystem. The share sheet remains, but a corpus P0.1 cannot
 proceed without should not have a single route off the device, and that route
 should not be the one with four builds of platform quirks behind it.
+
+#### P1.3 — `detect_phases` does not find the swing in a real phone clip (2026-08-17)
+
+**The first five real recordings are off the device, and they invalidate more
+than the gate.** Replaying `detect_phases` on the stored per-frame `wrist_y`:
+
+```
+#   clip_s  cover  take   top   imp   fin  back  down  ratio
+1      5.6   0.61     0     4    63   138     4    59  0.068   <- clip of nothing
+2     16.0   0.81     0     1   443   456     1   442  0.002
+3     15.4   0.73     0    15    66   412    15    51  0.294
+4     16.3   0.62     0   130   265   474   130   135  0.963
+5     18.5   0.79     0     8   526   540     8   518  0.015
+```
+
+**`top` lands at frame 1, 4, 8, 15 of a 15-18 second clip.** The detector is not
+finding the swing; it locks onto incidental hand movement during setup, because
+`top` is "the first peak clearing half the height range" and a 16-second clip is
+overwhelmingly not-swing. Every fault value in those reports — the 0.44 head
+sway included — was measured between meaningless anchors.
+
+**Consequence 1: the tempo-inversion gate is removed.** It rejected 3 of the 4
+genuine swings. It assumed the detected phases meant something; on real clips
+they do not, so a ratio below 1:1 says the *detector* failed, not that the
+input lacked a swing. The zero-duration checks stay — those are still
+impossibilities. The five recordings above are pinned as regression tests in
+both suites; reinstating the tempo check turns all four real-swing tests red.
+
+**Consequence 2: there is currently NO valid presence signal, so P1.1 is open
+again.** A clip of nothing still produces a full report. Note `pose_coverage`
+cannot substitute: the nothing-clip scored **0.61** against 0.62-0.81 for real
+swings — ML Kit found a "person" in 61% of frames of nothing, and the ranges
+overlap. The upstream likelihood gate (option A) would not have separated these
+either.
+
+**Consequence 3: capture length is a first-class variable.** A golf swing is
+1-2 seconds; these clips are 15-18. Until phase location is fixed, the cheapest
+mitigation is recording only the swing — start just before, stop just after.
+Worth a record-screen prompt regardless.
+
+**This is P0.2's `detect_address_onset()`, arriving from the other direction.**
+P0.2 wanted onset detection to fix the fault-baseline anchor and the top search
+bound. This is the same function needed to answer "where in this clip is the
+swing at all". Do not attempt a separate fix; it is the same work.
+
+**Observed: the held Python/Dart divergence bites on real data.** On recording
+4 the app stored `tempo_ratio` 1.512 while Python replaying the same `wrist_y`
+gives 0.963 — different smoothing windows (Dart's fixed `smooth = 5` frames vs
+Python's duration-based kernel at 29.97 fps) land `top` in different places.
+The divergence is documented and held pending P0.2, but this is the first time
+it has been seen changing a reported number rather than a theoretical one.
+
+**Corpus status: 5 recordings, one participant, one session.** Not P0.1's
+corpus — the spec calls for multiple subjects and repeat sessions — but the
+first real data the project has, and the export path that produced it now
+works.
+
+#### P1.4 — Swing localization: prototyped, NOT shipped, blocked on ground truth (2026-08-17)
+
+Filming yourself makes a long clip unavoidable: tripod, hit record, walk in,
+settle, swing, walk back, stop. **"Record a shorter clip" is not advice anyone
+can follow**, so P1.3's failure is a missing capability, not bad input. Remove
+that framing from any user-facing guidance.
+
+**The body-speed structure is real and clean.** Speed of the shoulder/hip
+midpoint, one character per second, `#`>8 `+`>3 `.`>1 torso-lengths/s:
+
+```
+nothing  |######|                 walk only, never settles
+swing 1  |######++.++.+###|       walk in | settle+swing | walk back
+swing 2  |#####+..++.+####|
+swing 3  |#####+...++.+####|
+swing 4  |#####+.+...+.++####|
+```
+
+**Trimming to the quiet middle is not enough.** It produces the right window
+(~5-13 s) and tempo stays inverted, because 8 s is still 5x a swing and
+`top = first peak clearing half the range` keeps catching an early hand raise.
+
+**Anchoring on the downswing works much better.** A swing's signature is the
+fastest downward wrist motion, not a tall peak. `locate_swing()` in
+`src/swing_phases.py` does this and puts the events *inside* the swing on all
+five recordings instead of at frame 1. Tempo ratios came out 3.00 / 2.42 /
+3.93 / 2.00 in one prototype — the right order of magnitude for real golfers.
+
+**It is not shipped, and here is why.** The answer moves with the smoothing
+constant. At `DESCENT_SMOOTH_S` 0.05 s one clip anchors at frame 447; at 0.10 s
+the same clip anchors at 272 — six seconds apart. A constant that swings the
+answer that far is doing real work, which falsifies the "no calibration debt"
+claim its neighbours can make honestly. Two different smoothing choices gave
+tempo sets of 3.00/2.42/3.93/2.00 and 1.10/1.93/4.00/2.78, and **the only
+reason to prefer the first is that it looks more like golf** — which is
+eyeball calibration, the thing P0 exists to prevent.
+
+**Why the ambiguity is real, not a tuning failure.** Counting distinct wrist
+drops (>=50% of the largest, >=1 s apart) per clip: **4, 4, 4, 5 events — and
+only one clip has a dominant one** (4.07 torso-lengths against ~1.3 for the
+rest). Practice swings, waggles and setting down the club all produce drops
+comparable to the swing. Choosing among them needs to know which one the
+golfer meant.
+
+**A hypothesis worth recording as refuted:** the missing pose frames are *not*
+in the swing. Coverage during the swing region is 0.80-0.89, *higher* than the
+0.61-0.81 overall; the gaps (up to 3.9 s) are in the walk-in, before the
+golfer is in frame. Motion blur at 30 fps is not the problem here.
+
+**What unblocks this: labels, and they are cheap.** Noting the second at which
+each swing happens converts every question above from taste into measurement.
+Without it, any localizer is tuned to look right. The natural product form is a
+scrubber on the report — "was this the swing?" — which collects labels as a
+side effect of use, and is the same UI that would serve as a manual-trim
+fallback.
+
+**The obvious way to get those labels is not available: the clips are gone.**
+`record_screen.dart` hands `stopVideoRecording()`'s path straight to the
+analyzer and keeps no copy; nothing writes the video into the app's Documents
+directory, so the `UIFileSharingEnabled` route added for the corpus export
+cannot see it; and the file sits in the app's temp directory, which iOS
+reclaims. **The five recordings of 2026-08-17 cannot be rewatched** — retention came
+after them, so they stay label-from-data only. Anything
+that wants video ground truth has to retain the video first.
+
+**Retention shipped 2026-08-19, on the golfer's decision to keep the data.**
+`clip_store.dart` moves each recording into `<Documents>/clips` as
+`swing_<YYYYMMDD>_<HHMMSS>.mp4`, which the `UIFileSharingEnabled` /
+`LSSupportsOpeningDocumentsInPlace` keys already expose in the Files app.
+Nothing new leaves the device: there is no backend, and this writes to the same
+container the corpus lives in.
+
+Four decisions worth not relitigating:
+
+- **Move, not copy.** A copy leaves two of a ~50 MB file on the phone, one of
+  them in a directory iOS reclaims on its own schedule — and analysis would be
+  reading the doomed one. Analysis now runs against the retained file.
+- **Retained BEFORE analysis, not after.** A swing that fails to analyze is the
+  most useful one to be able to rewatch, and the P1.1 hard-fail path throws.
+  Retaining afterwards would have lost exactly the clips worth keeping.
+- **The join is a written field, not a derived one.** Records carry
+  `clip_name`; nothing infers the clip from `timestamp`. A derived join breaks
+  silently the first time either side rounds differently, and this join is the
+  entire point of retaining.
+- **Deletion is part of the feature, not a follow-up.** These are videos of a
+  person and the only copy is on their phone. `Profile > Saved videos` shows
+  the count and size and deletes them all behind a confirmation. Deleting clips
+  does **not** touch the corpus — the measurements stay, so space can be
+  reclaimed without losing swing history.
+
+**No schema bump.** `historySchemaVersion` describes the file's *shape* (header
+present or not), and `clip_name` is an optional record field: old readers
+preserve it through `_source`, new readers read a missing key as "no clip".
+Both directions are tested. Every record written before 2026-08-19 has no clip
+and correctly says so.
+
+Clips travel by the Files app, **not** the corpus export — the share sheet
+carries the measurements, and putting hundreds of megabytes of video through it
+would break the one path P0.1 depends on.
+
+**They can still be labelled, from the data instead of the video.**
+`validation/device_corpus/label_sheet.py` renders one sheet per recording from
+the committed per-frame series: wrist/shoulder/hip in image pixels with the
+axis inverted and the y-range clipped to where the body actually is, wrist
+height above the hips in torso lengths (which removes the golfer walking
+toward a fixed camera), and a track of which frames had a pose at all. The
+swing reads off the normalized panel unmistakably — a rise to ~1.5 torso
+lengths, a drop through the hips, a follow-through peak — against an address
+that holds flat near 0. The nothing-clip has no such excursion anywhere, so it
+labels as a genuine negative for P1.1. Labels go in
+`validation/device_corpus/labels.json` (`--write-template` writes the empty
+slots), `null` where the labeller cannot tell.
+
+The sheet deliberately does **not** draw `locate_swing()`'s answer on itself.
+That answer is what the labels exist to judge; showing it to the labeller
+would contaminate the ground truth with the hypothesis.
+
+**What the current shipped detector does on these clips**, for scale — the
+swing in recording 1 is around 9.5-11.5 s and in recording 4 around 11-13 s:
+
+```
+             takeaway      top       impact     finish     clip
+nothing      0.0 s        0.2 s      2.1 s      4.5 s      5.6 s
+swing 1      1.1 s        3.6 s     14.8 s     15.2 s     16.0 s
+swing 2      0.0 s        0.5 s      2.4 s     13.8 s     15.4 s
+swing 3      0.0 s        4.3 s      7.2 s     15.8 s     16.3 s
+swing 4      0.0 s        0.2 s     17.6 s     18.1 s     18.5 s
+```
+
+Every one of them anchors in the walk-in, not the swing. This is P1.3 stated in
+seconds rather than in frame indices.
+
+**State of the code.** `locate_swing()` is committed, documented as
+unvalidated, and reachable only by passing `torso=` to `detect_phases`. Nothing
+in the app passes it, so behaviour is unchanged. The five recordings are
+committed as `tests/fixtures/device_corpus_2026_08_17.jsonl` with
+characterization tests that assert only what the data supports: the events are
+ordered and inside the clip, and they land later than peak localization's. The
+frame numbers are deliberately not pinned — a test asserting them would look
+like evidence they are right.
+
+**The app's name did not match its store listing — FIXED 2026-08-19.** Measured
+against the pinned SDK rather than assumed: `flutter create --project-name
+golf_swing_analyzer` writes `CFBundleDisplayName` "Golf Swing Analyzer" and
+`CFBundleName` "golf_swing_analyzer", while the App Store listing is **Fore
+Swing**. A tester installing from TestFlight would have found an icon whose name
+did not match what they tapped to get it. `configure_ios.py` now patches both
+keys (the generated `CFBundleName` is also past Apple's 15-character guidance).
+
+Deliberately **not** renamed: `main.dart`'s `MaterialApp` title, still "Golf
+Swing Analyzer". That is user-facing copy, and it belongs to the product-voice
+pass below rather than to a plist patcher — renaming it here would scatter the
+voice work across commits that are not about voice.
 
 **iOS compile gate (added 2026-08-04)** — `.github/workflows/ios-build.yml`
 builds iOS unsigned on a GitHub Actions `macos-latest` runner, so iOS
@@ -729,6 +1026,231 @@ will change anyway when P0.2 recalibrates and the verdict wording follows the
 thresholds. Worth doing *after* P0.2 so the copy is written once against final
 semantics — but the Record screen and the beta banner touch no thresholds and
 can move earlier if the app goes in front of anyone.
+
+**This is only half the problem.** The other half — the visual system, the
+screen structure, and the fact that the report shows no image of the swing it
+measured — is tracked in **Front-end UI** immediately below. Neither pass
+fixes the other: rewriting every sentence in the app would leave it looking
+exactly as template-built as it does now.
+
+### Front-end UI — it looks generated before it reads generated (2026-08-20)
+
+Companion to **Product voice** above, and meant to be read with it. That entry
+covers the *copy*; this one covers the *visual system, the structure, and the
+missing evidence*. The two failures are independent: fixing every sentence in
+the app would leave it looking exactly as template-built as it does now.
+
+**The tell is measurable, not a matter of taste.** The app is visually
+indistinguishable from a `flutter create` template with correct content pasted
+into it:
+
+- `main.dart:78-88` — the entire design system is `colorSchemeSeed:
+  Color(0xFF2E7D32)` plus `useMaterial3: true`, with light and dark identical
+  apart from `brightness`. That is Material's own demo seed, default Roboto/SF,
+  and no type scale.
+- **23** hardcoded `Colors.*` literals inside `src/ui/` (`amber.shade800`,
+  `green.shade600`, `orange.shade700`, `red.shade600`, `black54`, `black87`,
+  `Colors.red`), none derived from the `ColorScheme`. Dark mode is therefore
+  nominally supported and demonstrably never looked at.
+- **0** typography customizations, **0** `ThemeExtension`s, **0** `SafeArea`s
+  anywhere in `lib/`.
+- Spacing is hand-placed and off-grid: `SizedBox` heights at 4, 8, 12, 16, 20,
+  24, alongside `fromLTRB(16,16,16,0)`, `(16,0,16,8)`, `(16,8,16,4)`,
+  `symmetric(h:16,v:6)` and `Divider(height: 32)`. Nothing sits on a scale.
+- `report_screen.dart:57-72` — six near-identical `Card`s at margin 16 /
+  padding 16 in a flat `ListView`. When everything is a card at one elevation,
+  nothing is primary. This is the layout form of the "redundancy from parallel
+  construction" tell recorded above.
+
+A golfer reads all of that in about two seconds, before a single word.
+
+#### Tier 1 — highest impact, and none of it is gated on P0.2
+
+1. **One real theme file, and ban `Colors.*` from `src/ui/`.** A
+   `lib/src/ui/theme/app_theme.dart` with a deliberate palette (a green that is
+   not Material's stock `2E7D32`, a true near-black for camera surfaces, one
+   accent), a type ramp, and **tabular figures for every measured value** —
+   numbers that jitter in width as they change is a distinctly amateur detail
+   on a measurement app. Then a `SwingColors` `ThemeExtension` carrying the
+   semantic slots the app actually has (`flagged`, `notSeen`, `focus`, `scrim`,
+   `onScrim`, the three drill difficulties), so `fault_card.dart:36` and
+   `drill_tile.dart:13-22` stop inventing colors and dark mode starts working
+   as a side effect. Add `Gap.xs/sm/md/lg` (4/8/16/24) and delete the ad-hoc
+   `SizedBox`es.
+
+2. **Rebuild the Record screen.** It is the first thing anyone sees and the
+   weakest thing in the app: `record_screen.dart:145-200` puts a Material
+   `AppBar` titled "Record your swing" above a live viewfinder, three stacked
+   `Colors.black54` panels over the top third holding two `SegmentedButton`s,
+   two `DropdownButton`s and a 20-word instruction paragraph, and a red
+   `FloatingActionButton.extended` labelled "Stop & analyze". That is a
+   settings form pasted onto a camera. Specifically:
+   - Drop the AppBar, go edge-to-edge, and wrap the screen in its own
+     permanently-dark `Theme`. The `SegmentedButton`s currently inherit the
+     *light* scheme and render light-on-`black54` — which is exactly why
+     `dropdownColor: Colors.black87` and `iconEnabledColor: Colors.white` had
+     to be hand-patched at `:319-322` and `:472-475`. Fix the theme and those
+     patches disappear.
+   - Get handedness off the viewfinder. It is already persisted on the
+     participant record (`record_screen.dart:66`), so the screen asks a settled
+     question every launch. Onboarding once, then Profile.
+   - Get `_SwingKindSelector` out of the golfer path entirely. "This swing is:
+     Normal / Exaggerated", `Icons.science_outlined`, and a fault dropdown is
+     P0.1 corpus instrumentation sitting on the primary screen of a TestFlight
+     build. Put it behind a Profile toggle. Nothing says *internal tool* louder
+     than a beaker icon.
+   - What remains is one bottom control bar: focus picker, circular shutter
+     with a recording ring, mm:ss elapsed readout, haptics on start and stop.
+   - **Add a framing guide overlay** — a `CustomPainter` silhouette and
+     vertical alignment line, with the instruction text attached to it instead
+     of floating in a black slab. Highest-value visual addition available, and
+     it directly serves the down-the-line framing spec P0.1's corpus depends
+     on.
+   - **Add a self-timer.** A golfer with a club in their hands and a phone on a
+     tripod cannot reach the screen. Its absence is the clearest sign the flow
+     has never been used by a golfer.
+
+3. **Show the golfer the swing that was measured.** The report contains no
+   imagery at all — the app claims to have looked at someone's body and then
+   shows only sentences. Everything needed already exists: `ClipStore` retains
+   every clip, `frame_extractor.dart` pulls frames, per-frame landmarks are in
+   hand, and `phase_montage.py` already does this on the Python side. Put
+   address / top / impact stills with the skeleton and the measured quantity
+   drawn on them at the top of the report, plus scrubbing of the retained clip
+   with phase markers. This **promotes the "Video playback" bullet under User
+   Experience above** out of the someday list: it is what turns numbers into
+   evidence, it touches no thresholds, and it finally gives retained clips a
+   user-facing purpose beyond occupying storage.
+
+4. **Render measurements as instruments, not as prose.**
+   `swing_analyzer.dart:160-185` builds English sentences in the *service*
+   layer ("Lateral sway 0.44 torso-lengths (beta reference 0.13). Vertical dip
+   0.02 — informational."). That is a UI concern living in analysis code, and
+   it forces the report to present data as a paragraph. Give `FaultVerdict`
+   structured fields (`value`, `unit`, `reference`, `secondary`) and build one
+   `MeasurementGauge`: a short scale, the measured value marked, the reference
+   drawn as a **soft band rather than a hard line**, unit beneath.
+
+   **This is the honest move, not a cosmetic one, and it is the answer to the
+   constraint recorded in Product voice.** Uncertainty *drawn* is more truthful
+   than uncertainty *described*, because it survives a glance and a paragraph
+   does not. A shaded "not yet validated" band on every gauge carries the beta
+   caveat structurally, every time the screen is opened. Same for tempo:
+   `2.8 : 1 ±0.4` renders the interval `tempoRatioPrecision` already computes
+   at `report_screen.dart:200-217`, in place of 30 words prosifying it.
+
+5. **Give the report a hierarchy.** Hero (swing stills + tempo on one strong
+   surface) → the four measurements as a dense list, not four elevated cards →
+   drills collapsed under a flagged measurement, expanded only for the focus
+   fault → comparison last. `_SectionHeader` (`report_screen.dart:219`) becomes
+   a shared component, and the focus treatment (`fault_card.dart:44-49`, a
+   1.5px border on an otherwise identical card) becomes one genuinely
+   emphasized surface.
+
+#### Tier 2 — the missing product surfaces
+
+6. **There is no way to see your own past swings.** `swing_history.jsonl`
+   accumulates, but the only readout is one previous-vs-current card, and
+   Profile offers a count and an export button aimed at the developer. Data
+   goes in and never comes back out — that is a research instrument, not a
+   product. Add a **Swings** list (date, focus, the four values, tap through to
+   the report and clip). **This does not breach the Beta decision record:** a
+   list of past measurements makes no trend or improvement claim, so the
+   `Trend` / `Crossing` machinery stays unsurfaced exactly as required.
+
+7. **Decide the navigation instead of inheriting it.** Today: Record → push
+   Analyzing → replace with Report, with "record another" as a `videocam` icon
+   running `popUntil(isFirst)` (`report_screen.dart:44-50`). Camera-first is a
+   defensible product choice; three-deep pushes with no shell is what happens
+   when nobody chose. Either a three-tab shell (Record / Swings / Profile) or
+   an explicit "we open straight into the viewfinder" decision recorded here.
+   Either is fine; the accident is not.
+
+8. **The Analyzing screen is the longest wait and the least reassuring.**
+   `analyzing_screen.dart:196-228` shows a 220px `LinearProgressIndicator`,
+   indeterminate for two of three stages, reading "Extracting frames…" — where
+   the trailing ellipsis on every stage label is itself a generated-code tell.
+   Make it a three-step stepper with a determinate arc, show the first frame of
+   *their* swing behind it so the wait reads as work on their video, and add a
+   cancel. This runs over a ~50 MB file.
+
+9. **Profile is a document, not a settings screen** — hand-built `Padding` +
+   `Text` + `Divider(height: 32)` sequences where list components belong. Two
+   specifics: the raw participant UUID is the *headline* of the screen
+   (`profile_screen.dart:196-206`) when it is a support identifier and belongs
+   small, at the bottom, under Diagnostics with a copy button; and `_export`'s
+   failure path shows a 20-second `SnackBar` dumping `sent origin`, `screen`
+   and the raw exception at the user (`:170-178`). That snackbar exists for a
+   good reason (see the four builds burned on the share-origin quirk), but in
+   the golfer-facing path it is the most visible unfinished-internal-build
+   artifact in the app. Move it to a Diagnostics screen with
+   copy-to-clipboard, and tell the user "Export failed — details in
+   Diagnostics."
+
+10. **Show the version and build number.** The P1 record above spends three of
+    four builds on a phone running none of the code and names a visible build
+    number as the fix. A small `1.0.0 (42)` at the foot of Profile is both a
+    professionalism signal and that fix.
+
+11. **Settle the name, and give it a face.** `main.dart:76` still says
+    `'Golf Swing Analyzer'` while the home-screen icon says **Fore Swing**
+    (`configure_ios.py:78`, which correctly defers the in-app strings to this
+    pass). Pick Fore Swing everywhere, and add a wordmark and launch screen in
+    the dark camera-first palette. There is currently no icon, no launch
+    screen, and no visual identity of any kind.
+
+#### Tier 3 — details that read as unfinished
+
+- **Misleading iconography.** `Icons.remove_circle_outline` for "not seen"
+  (`fault_card.dart:75`) reads as *blocked*; a beaker marks both the beta
+  banner and the calibration control; `videocam` means "record another".
+  Curate a small set and drop icons where the label suffices.
+- **Status is signalled by color alone** — amber vs `scheme.outline` is the
+  only difference between `POSSIBLE` and `NOT SEEN` (`fault_card.dart:36`,
+  `:88-98`). Add shape or a glyph, and `Semantics` labels, of which there are
+  currently none anywhere.
+- **Hand-formatted dates.** `_two()` produces `2026-08-20 14:03`
+  (`swing_comparison_view.dart:38-43`). That is a log line; `intl`'s
+  "Yesterday, 2:03 pm" is a product.
+- **Fixed-width rows will overflow at large accessibility text sizes** —
+  notably the `SizedBox(width: 26)` used as indentation at
+  `record_screen.dart:333` and the label/control rows beside it.
+- **No `SafeArea` anywhere.** Harmless while every screen has an AppBar;
+  breaks the moment the camera screen goes edge-to-edge under item 2.
+- **Uppercase micro-badges** (`POSSIBLE`, `NOT SEEN`, and lowercase
+  `beginner`/`advanced` at `drill_tile.dart:52`) are generic-dashboard
+  styling — and the difficulty badge prints the raw JSON enum value.
+
+#### A likely bug found while reading — verify on device
+
+`record_screen.dart:213-216` makes `CameraPreview` a non-positioned child of a
+`Stack(fit: StackFit.expand)`, which passes it **tight** constraints. Its
+internal `AspectRatio` cannot honor its ratio under tight constraints, so the
+preview is very likely being **stretched to the screen** rather than
+letterboxed or center-cropped. Check against a known-square subject.
+
+This is not cosmetic: the golfer *frames the swing against this preview*, so a
+distorted preview means they frame to a lie — a measurement-quality issue that
+feeds straight into the P0.1 corpus. Fix with an explicit `AspectRatio`, or
+`FittedBox(fit: BoxFit.cover)` with a deliberate crop.
+
+#### The constraints — read before starting any of this
+
+- **Do not buy punchiness by deleting hedges.** Same rule as Product voice
+  above, and the same trap. Every qualification the current copy carries must
+  survive, compressed rather than dropped. Item 4 is the way through: move the
+  hedging out of prose and into *form*, where it is both shorter and harder to
+  miss.
+- **Do not rewrite the fault vocabulary yet.** "Possible", `NOT SEEN`,
+  `beta reference` and `torso-lengths` all follow the thresholds, and P0.2 will
+  change what they mean. Items 1, 2, 3, 5, 6, 10 and 11 are all
+  threshold-independent and can proceed now; the fault wording gets written
+  once, afterwards, against final semantics. Item 4 splits: build the
+  `MeasurementGauge` and the structured `FaultVerdict` fields now, set the
+  displayed reference values after P0.2.
+- **Do not surface trends to fill the new history screen.** The list is a
+  list. The moment it draws an arrow it makes a claim the calibration cannot
+  support.
 
 ### Practice Focus (persistent) — makes the existing focus-fault legible; fixes a real bug
 

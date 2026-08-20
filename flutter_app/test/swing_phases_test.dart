@@ -74,13 +74,6 @@ void main() {
       expect(implausibleSwing(p(10, 32, 40, 60)), isNull);
     });
 
-    test('rejects the device case', () {
-      // The trajectory the app actually reported from a clip containing no
-      // swing: backswing 6 frames, downswing 58, ratio 0.1:1.
-      final reason = implausibleSwing(p(0, 6, 64, 100));
-      expect(reason, isNotNull);
-      expect(reason, contains('downswing'));
-    });
 
     test('rejects a zero-duration backswing', () {
       expect(implausibleSwing(p(5, 5, 20, 40)), isNotNull);
@@ -94,12 +87,74 @@ void main() {
       expect(implausibleSwing(null), isNotNull);
     });
 
-    test('boundary sits at the inversion point', () {
-      // Deliberately loose: rejects only what cannot be a swing, not what is
-      // merely odd. 11:10 is a strange tempo and still passes, because judging
-      // *how good* a tempo is needs the P0.1 corpus.
-      expect(implausibleSwing(p(0, 10, 20, 30)), isNotNull);
-      expect(implausibleSwing(p(0, 11, 21, 30)), isNull);
+  });
+
+  // Phase indices recomputed from the first five real recordings off a phone
+  // (2026-08-17, 30 fps). Every one has a tempo ratio below 1:1 -- the detector
+  // places `top` in the first half-second of a 15-18 second clip -- so the
+  // tempo-inversion check that used to live in implausibleSwing rejected three
+  // of the four genuine swings. The gate must let all of these through: they
+  // are badly *analysed*, which is P1.3's problem, not absent.
+  group('implausibleSwing accepts real device recordings', () {
+    const deviceRecordings = <String, SwingPhases>{
+      'clip of nothing':
+          SwingPhases(takeaway: 0, top: 4, impact: 63, finish: 138),
+      'real swing 1':
+          SwingPhases(takeaway: 0, top: 1, impact: 443, finish: 456),
+      'real swing 2':
+          SwingPhases(takeaway: 0, top: 15, impact: 66, finish: 412),
+      'real swing 3':
+          SwingPhases(takeaway: 0, top: 130, impact: 265, finish: 474),
+      'real swing 4':
+          SwingPhases(takeaway: 0, top: 8, impact: 526, finish: 540),
+    };
+
+    deviceRecordings.forEach((label, phases) {
+      test(label, () => expect(implausibleSwing(phases), isNull));
     });
   });
+
+  group('tempoRatioPrecision', () {
+    // Both phases are counted in whole frames, so the ratio is only pinned
+    // down to (1/backswing + 1/downswing) * ratio. No constant, no calibration
+    // debt -- this is the arithmetic of counting, not a claim about golf.
+
+    test('null when there is no tempo', () {
+      expect(tempoRatioPrecision(null), isNull);
+    });
+
+    test('null when a phase has no duration', () {
+      const zeroDown = SwingPhases(takeaway: 0, top: 10, impact: 10, finish: 20);
+      expect(tempoRatioPrecision(swingTempo(zeroDown, 30)), isNull);
+    });
+
+    test('a long swing is pinned down tightly', () {
+      // 90 frames up, 30 down at 240fps: ratio 3.0, precision 0.13.
+      const phases = SwingPhases(takeaway: 0, top: 90, impact: 120, finish: 150);
+      final tempo = swingTempo(phases, 240)!;
+      expect(tempo.ratio, closeTo(3.0, 1e-9));
+      expect(tempoRatioPrecision(tempo), closeTo(0.133, 1e-3));
+    });
+
+    test('a short downswing is pinned down loosely', () {
+      // 9 frames up, 3 down at 30fps: same 3.0 ratio, 4x the uncertainty.
+      const phases = SwingPhases(takeaway: 0, top: 9, impact: 12, finish: 20);
+      final tempo = swingTempo(phases, 30)!;
+      expect(tempo.ratio, closeTo(3.0, 1e-9));
+      expect(tempoRatioPrecision(tempo), closeTo(1.333, 1e-3));
+    });
+
+    test('the device report that produced the false hedge is pinned tightly',
+        () {
+      // Device 2026-08-17, 30fps: the report told the golfer their downswing
+      // "spans only a few frames" while the detector had put 58 in it. Frame
+      // rate is not what decides this -- the counts are.
+      const phases = SwingPhases(takeaway: 0, top: 6, impact: 64, finish: 136);
+      final tempo = swingTempo(phases, 29.97)!;
+      final precision = tempoRatioPrecision(tempo)!;
+      expect(tempo.downswingFrames, 58);
+      expect(precision, lessThan(0.05));
+    });
+  });
+
 }
