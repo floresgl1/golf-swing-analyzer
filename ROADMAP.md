@@ -725,6 +725,51 @@ with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
 read as the fastest descent in the clip. Every clip in the corpus carries a
 few: 3 to 19 jumps over 0.5 torso-lengths each.
 
+**`locate_swing` IS NOT "DEMONSTRABLY BETTER". MEASURED 2026-08-20.** The
+paragraph above claims it "puts the events *inside* the swing on all five
+recordings instead of at frame 1". That claim was made by looking at plots.
+With all eight clips labelled it is **false**:
+
+```
+                         detect_phases   locate_swing   label      basis
+07:12:22  (nothing)       invents one     invents one    no swing   video
+07:51:50                    top 0.03s      top  4.80s    ~9.0s      sheet
+07:53:41                    top 0.50s      top 13.78s    ~9.0s      sheet
+07:54:23                    top 4.34s      top 15.82s    ~9.0s      sheet
+07:55:17                    top 0.20s      top 11.38s    ~9.0s      sheet
+193824                      top 0.47s      top  6.84s    ~7.0s      video
+193851                      top 0.17s      top  2.97s    ~7.0s      video
+193916                      top 0.30s      top  8.44s    ~7.0s      video
+--------------------------------------------------------------------------
+found the swing (video labels)   0/3            2/3
+found the swing (sheet labels)   0/4            0/4
+```
+
+**Two out of seven.** On the 2026-08-17 clips it misses by -4.2, +4.8, +6.8 and
++2.4 seconds — a scatter on both sides, which is worse than a consistent bias
+because there is no offset to correct. The "inside the swing on all five"
+reading was eyeball assessment of unlabelled data, which is the exact failure
+mode P0.4 exists to record and this project keeps rediscovering: **a claim
+checked against the same intuition that produced it is not checked.**
+
+It remains better than `detect_phases`, which is 0/7 and also invents a swing
+in the nothing-clip. That is a low bar and not an argument for shipping.
+
+**Both detectors fail the P1.1 negative.** On the clip containing no swing at
+all, `detect_phases` reports takeaway 0.0s / top 0.1s / impact 2.1s / finish
+4.6s and `locate_swing` reports 0.0 / 1.2 / 2.1 / 2.4. Neither declines. The
+hard-fail gate shipped in the app is a presence check on phase *ordering*, and
+both of these produce well-ordered phases, so it does not catch either. P1.1 is
+open, and swapping localizers will not close it.
+
+**Label quality, stated so it is not overread.** The four 2026-08-17 labels are
+`basis: sheet` and worse than that: the golfer first read "around 6-7 seconds",
+then revised to "8-10 seconds into each" after being shown a per-second readout
+of wrist height that I produced. **The revision followed my own analysis of the
+same series, so the label is partly mine.** It is strong enough to confirm a
+four-to-seven-second miss and far too weak to adjudicate anything finer. The
+three 2026-08-19 labels are `basis: video` and carry no such problem.
+
 **TWO hypotheses tried and refuted, recorded so they are not retried.**
 
 *First:* the jump sits four frames after a 0.53 s pose gap (frames 85-87), so

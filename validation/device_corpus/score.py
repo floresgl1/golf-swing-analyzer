@@ -159,6 +159,39 @@ def print_coarse(scored: list[dict]) -> None:
             print(f"  {name:<16} found the swing on {ok}/{len(judged)}")
 
 
+def score_negative(entry: dict, record: dict) -> dict:
+    """Judge a detector on a clip that contains no swing at all.
+
+    There is no offset to measure here. The only question is whether the
+    detector claims a swing anyway -- which is the P1.1 defect, not a
+    precision problem: the app produced a full fault report with drills for
+    a video of nothing.
+    """
+    results = detector_results(record)
+    return {
+        "timestamp": entry["timestamp"],
+        "fps": float(record["fps"]),
+        "detectors": {
+            name: (None if r is None else
+                   {"events": {e: r[e] for e in EVENTS}})
+            for name, r in results.items()
+        },
+    }
+
+
+def print_negatives(scored: list[dict]) -> None:
+    for clip in scored:
+        fps = clip["fps"]
+        print(f"\n{clip['timestamp']}  NO SWING IN THIS CLIP")
+        for name, result in clip["detectors"].items():
+            if result is None:
+                print(f"  {name:<16} correctly reported nothing")
+                continue
+            spans = " ".join(f"{e}={result['events'][e] / fps:.1f}s"
+                             for e in EVENTS)
+            print(f"  {name:<16} INVENTED a swing: {spans}")
+
+
 def score_swing(entry: dict, record: dict) -> dict:
     fps = float(record["fps"])
     truth = labelled_frames(entry, fps)
@@ -242,21 +275,23 @@ def main() -> None:
     records = load_records(args.corpus)
 
     window = args.window or labels.get("coarse_window_s", 2.0)
-    scored, coarse = [], []
+    scored, coarse, negatives = [], [], []
     unlabelled = 0
     for entry in labels["swings"]:
         record = records.get(entry["timestamp"])
         if record is None:
             print(f"warning: no record for {entry['timestamp']}; skipping")
             continue
-        if any(entry.get(f"{e}_s") is not None for e in EVENTS):
+        if entry.get("no_swing"):
+            negatives.append(score_negative(entry, record))
+        elif any(entry.get(f"{e}_s") is not None for e in EVENTS):
             scored.append(score_swing(entry, record))
         elif entry.get("swing_start_s") is not None:
             coarse.append(score_coarse(entry, record, window))
         else:
             unlabelled += 1
 
-    if not scored and not coarse:
+    if not scored and not coarse and not negatives:
         print(f"No labelled swings yet ({unlabelled} awaiting labels).")
         print(f"Fill in the *_s fields in {args.labels.relative_to(REPO)} "
               "and run again.")
@@ -268,6 +303,9 @@ def main() -> None:
         print("\n--- coarse labels: does the detector find the swing at "
               "all? ---")
         print_coarse(coarse)
+    if negatives:
+        print("\n--- clips with no swing: does the detector invent one? ---")
+        print_negatives(negatives)
     if unlabelled:
         print(f"\n({unlabelled} swing(s) still unlabelled.)")
 
