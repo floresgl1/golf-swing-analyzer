@@ -1,5 +1,5 @@
 {
-  "note": "Frame indices into frames.* of the record with the matching timestamp. null means 'not visible / cannot tell' -- leave it null rather than guessing; a guessed label is worse than a missing one. `clip_name` is the video in Files this swing came from, or null for captures made before the app kept them.",
+  "note": "Times in SECONDS from the start of the clip, for the record with the matching timestamp. null means 'not visible / cannot tell' -- leave it null rather than guessing; a guessed label is worse than a missing one. `clip_name` is the video in Files this swing came from, or null for captures made before the app kept them.",
   "swings": [
     {
       "timestamp": "2026-08-17T07:12:22-07:00",
@@ -7,10 +7,11 @@
       "sheet": "sheets/swing_20260817_071222.png",
       "frame_count": 167,
       "fps": 29.97002997002997,
-      "takeaway": null,
-      "top": null,
-      "impact": null,
-      "finish": null
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "swing_start_s": null
     },
     {
       "timestamp": "2026-08-17T07:51:50-07:00",
@@ -18,10 +19,11 @@
       "sheet": "sheets/swing_20260817_075150.png",
       "frame_count": 479,
       "fps": 29.97002997002997,
-      "takeaway": null,
-      "top": null,
-      "impact": null,
-      "finish": null
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "swing_start_s": null
     },
     {
       "timestamp": "2026-08-17T07:53:41-07:00",
@@ -29,10 +31,11 @@
       "sheet": "sheets/swing_20260817_075341.png",
       "frame_count": 462,
       "fps": 29.97002997002997,
-      "takeaway": null,
-      "top": null,
-      "impact": null,
-      "finish": null
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "swing_start_s": null
     },
     {
       "timestamp": "2026-08-17T07:54:23-07:00",
@@ -40,10 +43,11 @@
       "sheet": "sheets/swing_20260817_075423.png",
       "frame_count": 490,
       "fps": 29.97002997002997,
-      "takeaway": null,
-      "top": null,
-      "impact": null,
-      "finish": null
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "swing_start_s": null
     },
     {
       "timestamp": "2026-08-17T07:55:17-07:00",
@@ -51,10 +55,11 @@
       "sheet": "sheets/swing_20260817_075517.png",
       "frame_count": 554,
       "fps": 29.97002997002997,
-      "takeaway": null,
-      "top": null,
-      "impact": null,
-      "finish": null
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "swing_start_s": null
     },
     {
       "timestamp": "2026-08-19T19:38:32-07:00",
@@ -62,10 +67,12 @@
       "sheet": "sheets/swing_20260819_193824.png",
       "frame_count": 377,
       "fps": 29.97002997002997,
-      "takeaway": null,
-      "top": null,
-      "impact": null,
-      "finish": null
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "swing_start_s": 7.0,
+      "swing_start_source": "golfer, watching the clip: 'the swings all start around 7 seconds into each video' (2026-08-20)"
     },
     {
       "timestamp": "2026-08-19T19:38:59-07:00",
@@ -73,10 +80,12 @@
       "sheet": "sheets/swing_20260819_193851.png",
       "frame_count": 373,
       "fps": 29.97002997002997,
-      "takeaway": null,
-      "top": null,
-      "impact": null,
-      "finish": null
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "swing_start_s": 7.0,
+      "swing_start_source": "golfer, watching the clip: 'the swings all start around 7 seconds into each video' (2026-08-20)"
     },
     {
       "timestamp": "2026-08-19T19:39:26-07:00",
@@ -84,10 +93,14 @@
       "sheet": "sheets/swing_20260819_193916.png",
       "frame_count": 417,
       "fps": 29.97002997002997,
-      "takeaway": null,
-      "top": null,
-      "impact": null,
-      "finish": null
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "swing_start_s": 7.0,
+      "swing_start_source": "golfer, watching the clip: 'the swings all start around 7 seconds into each video' (2026-08-20)"
     }
-  ]
+  ],
+  "coarse_note": "`swing_start_s` is a COARSE label: roughly when the swing begins, good to about a second. It is not a substitute for the four precise events, but it settles the question that matters most -- whether a detector lands in the swing or in the walk-in -- because the errors being measured are seconds wide, not tenths. Scored with an explicit --window, never against a pretended precision.",
+  "coarse_window_s": 2.0
 }

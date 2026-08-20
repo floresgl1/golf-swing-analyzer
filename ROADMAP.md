@@ -675,6 +675,101 @@ in the swing. Coverage during the swing region is 0.80-0.89, *higher* than the
 0.61-0.81 overall; the gaps (up to 3.9 s) are in the walk-in, before the
 golfer is in frame. Motion blur at 30 fps is not the problem here.
 
+#### P1.4 — FIRST MEASUREMENT AGAINST LABELS (2026-08-20)
+
+The golfer watched the three retained clips and reported: **"the swings all
+start around 7 seconds into each video."** One coarse number per swing, good to
+about a second. That is far short of the four precise events, and it settles
+more than expected — the errors under measurement are *seconds* wide, so a
+one-second label separates a detector that finds the swing from one that finds
+the walk-in. Recorded in `labels.json` with its provenance, and scored by
+`validation/device_corpus/score.py` against an explicit `--window`, never
+against a precision the label does not have.
+
+```
+                    detect_phases      locate_swing     label
+swing_..._193824.mp4   top 0.47s        top 6.84s       ~7.0s
+swing_..._193851.mp4   top 0.17s        top 2.97s       ~7.0s
+swing_..._193916.mp4   top 0.30s        top 8.44s       ~7.0s
+--------------------------------------------------------------
+found the swing            0/3               2/3
+```
+
+**`detect_phases` is refuted, not merely suspected.** It has now missed on
+three labelled swings and eight unlabelled ones, always anchoring in the
+walk-in. This is measurement, not inference from plots.
+
+**The DESCENT_SMOOTH_S objection is weaker than recorded.** The block above
+says the answer moves six seconds between 0.05 and 0.10 — true on the
+2026-08-17 clips. Swept against the labelled ones, the answer is **identical
+from 0.07 through 0.30** (2/3 at every setting; 0.05 drops to 1/3). So on
+clips where a swing can be checked, the constant is not doing the load-bearing
+work the earlier note feared. It is still not enough to ship on: three labels.
+
+**Why the third clip fails — measured, and it is not the smoothing.**
+`locate_swing` anchors at 2.97 s on `swing_..._193851.mp4`. The cause is a
+single-frame tracking discontinuity:
+
+```
+frame 88->89   +1.04 -> +1.20   jump +0.16 torso-lengths in 33ms
+frame 89->90   +1.20 -> +1.04   jump -0.17
+frame 90->91   +1.13            jump +0.09
+frame 91->92   +1.13 -> +0.21   jump -0.92   <-- the anchor
+frame 92->93   +0.21 -> +0.29   jump +0.08
+```
+
+A wrist cannot travel 0.92 torso-lengths — roughly 45 cm — in 33 ms; that is
+~13 m/s, clubhead speed, not wrist speed. The median per-frame jump in this
+clip is **0.027** torso-lengths, so the anchor is **34x** the typical frame,
+with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
+read as the fastest descent in the clip. Every clip in the corpus carries a
+few: 3 to 19 jumps over 0.5 torso-lengths each.
+
+**TWO hypotheses tried and refuted, recorded so they are not retried.**
+
+*First:* the jump sits four frames after a 0.53 s pose gap (frames 85-87), so
+refuse to compute the descent rate across interpolated frames — mask any rate
+whose smoothing window touches an untracked frame. **Does not work.** With
+`DESCENT_SMOOTH_S` at 0.10 s the window is three frames wide and frames 90-92
+are all tracked, so the mask never sees the artifact. (The same masking did
+move two *unlabelled* 2026-08-17 clips from the end toward the middle, 13.78s
+-> 9.08s and 15.82s -> 9.81s, which looks like an improvement and cannot be
+called one without labels.)
+
+*Second — and this one retracts a claim made earlier in this same section:*
+reject per-frame jumps far outside the clip's own distribution. **Also does not
+work, and the reason matters more than the fix.** A 3-frame median filter — the
+smallest window that can remove a one-frame outlier at all — barely moves the
+descent rate at the false anchor, from **-12.92 to -12.35** torso-lengths/s,
+still beating the real swing's **-8.94**. The anchor survives at 2.97 s.
+
+The drop is a **step, not a spike**: frames 92, 93 and 94 are all low
+(+0.21, +0.29, +0.20) after +1.13 at frame 91. A median cannot remove it
+because there is nothing transient to remove.
+
+**What is actually happening, from the golfer (2026-08-20): "around 3 seconds
+in I am walking with the club into position."** The wrist sits ~1.1
+torso-lengths above the hips because the club is being carried, and then it
+comes down into address. **That descent genuinely out-runs the downswing** —
+-12.9 against -8.9 torso-lengths/s — so this is not a tracking artifact to be
+filtered away. Setting up to hit the ball is a faster normalized wrist descent
+than hitting it.
+
+**So the anchor is wrong, not the data.** "Fastest descent" is not sufficient,
+and no amount of cleaning will make it sufficient, because the competing event
+is real. This is the same wall the earlier note hit from the other side —
+"practice swings, waggles and setting down the club all produce drops
+comparable to the swing" — now with a measured example and a golfer's account
+of what the motion was.
+
+**Where that points.** The swing is not merely a fast descent; it is a fast
+descent *out of a settled address*. The body-speed structure sketched above
+already separates `walk in | settle+swing | walk back`, and bounding the search
+to after the golfer settles is exactly what `detect_address_onset()` (P0.2) is
+for. That makes P1.4 and P0.2 one problem rather than two — which is a change
+in the plan, not a detail, and should be decided deliberately rather than
+drifted into.
+
 **What unblocks this: labels, and they are cheap.** Noting the second at which
 each swing happens converts every question above from taste into measurement.
 Without it, any localizer is tuned to look right. The natural product form is a

@@ -187,8 +187,8 @@ def write_template(swings: list[dict], path: Path) -> None:
 
     template = {
         "note": (
-            "Frame indices into frames.* of the record with the matching "
-            "timestamp. null means 'not visible / cannot tell' -- leave it "
+            "Times in SECONDS from the start of the clip, for the record with "
+            "the matching timestamp. null means 'not visible / cannot tell' -- leave it "
             "null rather than guessing; a guessed label is worse than a "
             "missing one. `clip_name` is the video in Files this swing came "
             "from, or null for captures made before the app kept them."
@@ -203,10 +203,14 @@ def write_template(swings: list[dict], path: Path) -> None:
             "sheet": f"sheets/{slug_for(swing)}.png",
             "frame_count": swing["frame_count"],
             "fps": swing["fps"],
-            "takeaway": prior.get("takeaway"),
-            "top": prior.get("top"),
-            "impact": prior.get("impact"),
-            "finish": prior.get("finish"),
+            # SECONDS, because that is what a scrubber shows and what the
+            # sheets' x-axis reads. Frames are derived at scoring time. Asking
+            # a human to transcribe frame indices from a video player is asking
+            # for a class of error that does not need to exist.
+            "takeaway_s": prior.get("takeaway_s"),
+            "top_s": prior.get("top_s"),
+            "impact_s": prior.get("impact_s"),
+            "finish_s": prior.get("finish_s"),
         })
     path.write_text(json.dumps(template, indent=2) + "\n")
 
