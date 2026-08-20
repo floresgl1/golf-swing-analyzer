@@ -1027,6 +1027,231 @@ thresholds. Worth doing *after* P0.2 so the copy is written once against final
 semantics — but the Record screen and the beta banner touch no thresholds and
 can move earlier if the app goes in front of anyone.
 
+**This is only half the problem.** The other half — the visual system, the
+screen structure, and the fact that the report shows no image of the swing it
+measured — is tracked in **Front-end UI** immediately below. Neither pass
+fixes the other: rewriting every sentence in the app would leave it looking
+exactly as template-built as it does now.
+
+### Front-end UI — it looks generated before it reads generated (2026-08-20)
+
+Companion to **Product voice** above, and meant to be read with it. That entry
+covers the *copy*; this one covers the *visual system, the structure, and the
+missing evidence*. The two failures are independent: fixing every sentence in
+the app would leave it looking exactly as template-built as it does now.
+
+**The tell is measurable, not a matter of taste.** The app is visually
+indistinguishable from a `flutter create` template with correct content pasted
+into it:
+
+- `main.dart:78-88` — the entire design system is `colorSchemeSeed:
+  Color(0xFF2E7D32)` plus `useMaterial3: true`, with light and dark identical
+  apart from `brightness`. That is Material's own demo seed, default Roboto/SF,
+  and no type scale.
+- **23** hardcoded `Colors.*` literals inside `src/ui/` (`amber.shade800`,
+  `green.shade600`, `orange.shade700`, `red.shade600`, `black54`, `black87`,
+  `Colors.red`), none derived from the `ColorScheme`. Dark mode is therefore
+  nominally supported and demonstrably never looked at.
+- **0** typography customizations, **0** `ThemeExtension`s, **0** `SafeArea`s
+  anywhere in `lib/`.
+- Spacing is hand-placed and off-grid: `SizedBox` heights at 4, 8, 12, 16, 20,
+  24, alongside `fromLTRB(16,16,16,0)`, `(16,0,16,8)`, `(16,8,16,4)`,
+  `symmetric(h:16,v:6)` and `Divider(height: 32)`. Nothing sits on a scale.
+- `report_screen.dart:57-72` — six near-identical `Card`s at margin 16 /
+  padding 16 in a flat `ListView`. When everything is a card at one elevation,
+  nothing is primary. This is the layout form of the "redundancy from parallel
+  construction" tell recorded above.
+
+A golfer reads all of that in about two seconds, before a single word.
+
+#### Tier 1 — highest impact, and none of it is gated on P0.2
+
+1. **One real theme file, and ban `Colors.*` from `src/ui/`.** A
+   `lib/src/ui/theme/app_theme.dart` with a deliberate palette (a green that is
+   not Material's stock `2E7D32`, a true near-black for camera surfaces, one
+   accent), a type ramp, and **tabular figures for every measured value** —
+   numbers that jitter in width as they change is a distinctly amateur detail
+   on a measurement app. Then a `SwingColors` `ThemeExtension` carrying the
+   semantic slots the app actually has (`flagged`, `notSeen`, `focus`, `scrim`,
+   `onScrim`, the three drill difficulties), so `fault_card.dart:36` and
+   `drill_tile.dart:13-22` stop inventing colors and dark mode starts working
+   as a side effect. Add `Gap.xs/sm/md/lg` (4/8/16/24) and delete the ad-hoc
+   `SizedBox`es.
+
+2. **Rebuild the Record screen.** It is the first thing anyone sees and the
+   weakest thing in the app: `record_screen.dart:145-200` puts a Material
+   `AppBar` titled "Record your swing" above a live viewfinder, three stacked
+   `Colors.black54` panels over the top third holding two `SegmentedButton`s,
+   two `DropdownButton`s and a 20-word instruction paragraph, and a red
+   `FloatingActionButton.extended` labelled "Stop & analyze". That is a
+   settings form pasted onto a camera. Specifically:
+   - Drop the AppBar, go edge-to-edge, and wrap the screen in its own
+     permanently-dark `Theme`. The `SegmentedButton`s currently inherit the
+     *light* scheme and render light-on-`black54` — which is exactly why
+     `dropdownColor: Colors.black87` and `iconEnabledColor: Colors.white` had
+     to be hand-patched at `:319-322` and `:472-475`. Fix the theme and those
+     patches disappear.
+   - Get handedness off the viewfinder. It is already persisted on the
+     participant record (`record_screen.dart:66`), so the screen asks a settled
+     question every launch. Onboarding once, then Profile.
+   - Get `_SwingKindSelector` out of the golfer path entirely. "This swing is:
+     Normal / Exaggerated", `Icons.science_outlined`, and a fault dropdown is
+     P0.1 corpus instrumentation sitting on the primary screen of a TestFlight
+     build. Put it behind a Profile toggle. Nothing says *internal tool* louder
+     than a beaker icon.
+   - What remains is one bottom control bar: focus picker, circular shutter
+     with a recording ring, mm:ss elapsed readout, haptics on start and stop.
+   - **Add a framing guide overlay** — a `CustomPainter` silhouette and
+     vertical alignment line, with the instruction text attached to it instead
+     of floating in a black slab. Highest-value visual addition available, and
+     it directly serves the down-the-line framing spec P0.1's corpus depends
+     on.
+   - **Add a self-timer.** A golfer with a club in their hands and a phone on a
+     tripod cannot reach the screen. Its absence is the clearest sign the flow
+     has never been used by a golfer.
+
+3. **Show the golfer the swing that was measured.** The report contains no
+   imagery at all — the app claims to have looked at someone's body and then
+   shows only sentences. Everything needed already exists: `ClipStore` retains
+   every clip, `frame_extractor.dart` pulls frames, per-frame landmarks are in
+   hand, and `phase_montage.py` already does this on the Python side. Put
+   address / top / impact stills with the skeleton and the measured quantity
+   drawn on them at the top of the report, plus scrubbing of the retained clip
+   with phase markers. This **promotes the "Video playback" bullet under User
+   Experience above** out of the someday list: it is what turns numbers into
+   evidence, it touches no thresholds, and it finally gives retained clips a
+   user-facing purpose beyond occupying storage.
+
+4. **Render measurements as instruments, not as prose.**
+   `swing_analyzer.dart:160-185` builds English sentences in the *service*
+   layer ("Lateral sway 0.44 torso-lengths (beta reference 0.13). Vertical dip
+   0.02 — informational."). That is a UI concern living in analysis code, and
+   it forces the report to present data as a paragraph. Give `FaultVerdict`
+   structured fields (`value`, `unit`, `reference`, `secondary`) and build one
+   `MeasurementGauge`: a short scale, the measured value marked, the reference
+   drawn as a **soft band rather than a hard line**, unit beneath.
+
+   **This is the honest move, not a cosmetic one, and it is the answer to the
+   constraint recorded in Product voice.** Uncertainty *drawn* is more truthful
+   than uncertainty *described*, because it survives a glance and a paragraph
+   does not. A shaded "not yet validated" band on every gauge carries the beta
+   caveat structurally, every time the screen is opened. Same for tempo:
+   `2.8 : 1 ±0.4` renders the interval `tempoRatioPrecision` already computes
+   at `report_screen.dart:200-217`, in place of 30 words prosifying it.
+
+5. **Give the report a hierarchy.** Hero (swing stills + tempo on one strong
+   surface) → the four measurements as a dense list, not four elevated cards →
+   drills collapsed under a flagged measurement, expanded only for the focus
+   fault → comparison last. `_SectionHeader` (`report_screen.dart:219`) becomes
+   a shared component, and the focus treatment (`fault_card.dart:44-49`, a
+   1.5px border on an otherwise identical card) becomes one genuinely
+   emphasized surface.
+
+#### Tier 2 — the missing product surfaces
+
+6. **There is no way to see your own past swings.** `swing_history.jsonl`
+   accumulates, but the only readout is one previous-vs-current card, and
+   Profile offers a count and an export button aimed at the developer. Data
+   goes in and never comes back out — that is a research instrument, not a
+   product. Add a **Swings** list (date, focus, the four values, tap through to
+   the report and clip). **This does not breach the Beta decision record:** a
+   list of past measurements makes no trend or improvement claim, so the
+   `Trend` / `Crossing` machinery stays unsurfaced exactly as required.
+
+7. **Decide the navigation instead of inheriting it.** Today: Record → push
+   Analyzing → replace with Report, with "record another" as a `videocam` icon
+   running `popUntil(isFirst)` (`report_screen.dart:44-50`). Camera-first is a
+   defensible product choice; three-deep pushes with no shell is what happens
+   when nobody chose. Either a three-tab shell (Record / Swings / Profile) or
+   an explicit "we open straight into the viewfinder" decision recorded here.
+   Either is fine; the accident is not.
+
+8. **The Analyzing screen is the longest wait and the least reassuring.**
+   `analyzing_screen.dart:196-228` shows a 220px `LinearProgressIndicator`,
+   indeterminate for two of three stages, reading "Extracting frames…" — where
+   the trailing ellipsis on every stage label is itself a generated-code tell.
+   Make it a three-step stepper with a determinate arc, show the first frame of
+   *their* swing behind it so the wait reads as work on their video, and add a
+   cancel. This runs over a ~50 MB file.
+
+9. **Profile is a document, not a settings screen** — hand-built `Padding` +
+   `Text` + `Divider(height: 32)` sequences where list components belong. Two
+   specifics: the raw participant UUID is the *headline* of the screen
+   (`profile_screen.dart:196-206`) when it is a support identifier and belongs
+   small, at the bottom, under Diagnostics with a copy button; and `_export`'s
+   failure path shows a 20-second `SnackBar` dumping `sent origin`, `screen`
+   and the raw exception at the user (`:170-178`). That snackbar exists for a
+   good reason (see the four builds burned on the share-origin quirk), but in
+   the golfer-facing path it is the most visible unfinished-internal-build
+   artifact in the app. Move it to a Diagnostics screen with
+   copy-to-clipboard, and tell the user "Export failed — details in
+   Diagnostics."
+
+10. **Show the version and build number.** The P1 record above spends three of
+    four builds on a phone running none of the code and names a visible build
+    number as the fix. A small `1.0.0 (42)` at the foot of Profile is both a
+    professionalism signal and that fix.
+
+11. **Settle the name, and give it a face.** `main.dart:76` still says
+    `'Golf Swing Analyzer'` while the home-screen icon says **Fore Swing**
+    (`configure_ios.py:78`, which correctly defers the in-app strings to this
+    pass). Pick Fore Swing everywhere, and add a wordmark and launch screen in
+    the dark camera-first palette. There is currently no icon, no launch
+    screen, and no visual identity of any kind.
+
+#### Tier 3 — details that read as unfinished
+
+- **Misleading iconography.** `Icons.remove_circle_outline` for "not seen"
+  (`fault_card.dart:75`) reads as *blocked*; a beaker marks both the beta
+  banner and the calibration control; `videocam` means "record another".
+  Curate a small set and drop icons where the label suffices.
+- **Status is signalled by color alone** — amber vs `scheme.outline` is the
+  only difference between `POSSIBLE` and `NOT SEEN` (`fault_card.dart:36`,
+  `:88-98`). Add shape or a glyph, and `Semantics` labels, of which there are
+  currently none anywhere.
+- **Hand-formatted dates.** `_two()` produces `2026-08-20 14:03`
+  (`swing_comparison_view.dart:38-43`). That is a log line; `intl`'s
+  "Yesterday, 2:03 pm" is a product.
+- **Fixed-width rows will overflow at large accessibility text sizes** —
+  notably the `SizedBox(width: 26)` used as indentation at
+  `record_screen.dart:333` and the label/control rows beside it.
+- **No `SafeArea` anywhere.** Harmless while every screen has an AppBar;
+  breaks the moment the camera screen goes edge-to-edge under item 2.
+- **Uppercase micro-badges** (`POSSIBLE`, `NOT SEEN`, and lowercase
+  `beginner`/`advanced` at `drill_tile.dart:52`) are generic-dashboard
+  styling — and the difficulty badge prints the raw JSON enum value.
+
+#### A likely bug found while reading — verify on device
+
+`record_screen.dart:213-216` makes `CameraPreview` a non-positioned child of a
+`Stack(fit: StackFit.expand)`, which passes it **tight** constraints. Its
+internal `AspectRatio` cannot honor its ratio under tight constraints, so the
+preview is very likely being **stretched to the screen** rather than
+letterboxed or center-cropped. Check against a known-square subject.
+
+This is not cosmetic: the golfer *frames the swing against this preview*, so a
+distorted preview means they frame to a lie — a measurement-quality issue that
+feeds straight into the P0.1 corpus. Fix with an explicit `AspectRatio`, or
+`FittedBox(fit: BoxFit.cover)` with a deliberate crop.
+
+#### The constraints — read before starting any of this
+
+- **Do not buy punchiness by deleting hedges.** Same rule as Product voice
+  above, and the same trap. Every qualification the current copy carries must
+  survive, compressed rather than dropped. Item 4 is the way through: move the
+  hedging out of prose and into *form*, where it is both shorter and harder to
+  miss.
+- **Do not rewrite the fault vocabulary yet.** "Possible", `NOT SEEN`,
+  `beta reference` and `torso-lengths` all follow the thresholds, and P0.2 will
+  change what they mean. Items 1, 2, 3, 5, 6, 10 and 11 are all
+  threshold-independent and can proceed now; the fault wording gets written
+  once, afterwards, against final semantics. Item 4 splits: build the
+  `MeasurementGauge` and the structured `FaultVerdict` fields now, set the
+  displayed reference values after P0.2.
+- **Do not surface trends to fill the new history screen.** The list is a
+  list. The moment it draws an arrow it makes a claim the calibration cannot
+  support.
+
 ### Practice Focus (persistent) — makes the existing focus-fault legible; fixes a real bug
 
 **Gating (read first):** buildable only *after* **P0.1** supplies the measurement noise floor (staleness has no valid threshold without it) and **P0.2** establishes the measurement-version boundary (trends can't cross it). Do NOT pick this up as a UI task and build the mechanism without the calibration — that reproduces exactly the "looks calibrated, isn't" failure this design exists to avoid.
