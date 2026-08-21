@@ -1690,7 +1690,7 @@ A golfer reads all of that in about two seconds, before a single word.
 
 #### Tier 1 — highest impact, and none of it is gated on P0.2
 
-1. **One real theme file, and ban `Colors.*` from `src/ui/`.** A
+1. ✅ **One real theme file, and ban `Colors.*` from `src/ui/`.** A
    `lib/src/ui/theme/app_theme.dart` with a deliberate palette (a green that is
    not Material's stock `2E7D32`, a true near-black for camera surfaces, one
    accent), a type ramp, and **tabular figures for every measured value** —
@@ -1701,6 +1701,9 @@ A golfer reads all of that in about two seconds, before a single word.
    `drill_tile.dart:13-22` stop inventing colors and dark mode starts working
    as a side effect. Add `Gap.xs/sm/md/lg` (4/8/16/24) and delete the ad-hoc
    `SizedBox`es.
+   *Done prior sessions.* `app_theme.dart` created with deliberate palette,
+   `SwingColors` extension, `Gap` constants; remaining `Colors.*` uses are
+   justified (black for shadows/scrim, transparent for gradients).
 
 2. ✅ **Rebuild the Record screen.** It is the first thing anyone sees and the
    weakest thing in the app: `record_screen.dart:145-200` puts a Material
@@ -1759,7 +1762,7 @@ A golfer reads all of that in about two seconds, before a single word.
    AnalyzingScreen → ReportScreen. Tap/drag to scrub, tap video to
    play/pause. Hidden gracefully when no clip was retained.
 
-4. **Render measurements as instruments, not as prose.**
+4. ✅ **Render measurements as instruments, not as prose.**
    `swing_analyzer.dart:160-185` builds English sentences in the *service*
    layer ("Lateral sway 0.44 torso-lengths (beta reference 0.13). Vertical dip
    0.02 — informational."). That is a UI concern living in analysis code, and
@@ -1775,6 +1778,9 @@ A golfer reads all of that in about two seconds, before a single word.
    caveat structurally, every time the screen is opened. Same for tempo:
    `2.8 : 1 ±0.4` renders the interval `tempoRatioPrecision` already computes
    at `report_screen.dart:200-217`, in place of 30 words prosifying it.
+   *Done prior sessions.* `MeasurementGauge` widget built and used in both
+   `fault_card.dart` and `report_screen.dart`. `FaultVerdict` carries
+   structured `measured`/`reference`/`isAngle` fields.
 
 5. ✅ **Give the report a hierarchy.** Hero (swing stills + tempo on one strong
    surface) → the four measurements as a dense list, not four elevated cards →
@@ -1791,7 +1797,7 @@ A golfer reads all of that in about two seconds, before a single word.
 
 #### Tier 2 — the missing product surfaces
 
-6. **There is no way to see your own past swings.** `swing_history.jsonl`
+6. ✅ **There is no way to see your own past swings.** `swing_history.jsonl`
    accumulates, but the only readout is one previous-vs-current card, and
    Profile offers a count and an export button aimed at the developer. Data
    goes in and never comes back out — that is a research instrument, not a
@@ -1799,6 +1805,14 @@ A golfer reads all of that in about two seconds, before a single word.
    the report and clip). **This does not breach the Beta decision record:** a
    list of past measurements makes no trend or improvement claim, so the
    `Trend` / `Crossing` machinery stays unsurfaced exactly as required.
+   *Done 2026-08-21.* `SwingsScreen` replaced the placeholder with a real
+   list: loads from `SwingHistoryStore`, shows each swing newest-first with
+   date (relative: Today/Yesterday/month), flagged-fault count badge, tempo,
+   and calibration chip. Tapping opens `SwingDetailScreen` with the four
+   fault measurements, tempo, metadata (fps, frames, coverage, handedness,
+   version, clip name), and — when the retained clip and per-frame data are
+   both available — SwingPlayer with re-derived phase markers. Pull to
+   refresh. No trend, no crossing, no improvement claims.
 
 7. ✅ **Decide the navigation instead of inheriting it.** Today: Record → push
    Analyzing → replace with Report, with "record another" as a `videocam` icon
@@ -1827,7 +1841,7 @@ A golfer reads all of that in about two seconds, before a single word.
    top-left for cancel. Stage labels: "Reading video", "Finding your
    body", "Building report".
 
-9. **Profile is a document, not a settings screen** — hand-built `Padding` +
+9. ✅ **Profile is a document, not a settings screen** — hand-built `Padding` +
    `Text` + `Divider(height: 32)` sequences where list components belong. Two
    specifics: the raw participant UUID is the *headline* of the screen
    (`profile_screen.dart:196-206`) when it is a support identifier and belongs
@@ -1839,40 +1853,57 @@ A golfer reads all of that in about two seconds, before a single word.
    artifact in the app. Move it to a Diagnostics screen with
    copy-to-clipboard, and tell the user "Export failed — details in
    Diagnostics."
+   *Done prior sessions.* Profile rebuilt with `_DiagnosticsSection` at
+   the bottom: participant UUID moved there with a copy button, export
+   error rerouted to a user-friendly message with details in Diagnostics.
 
-10. **Show the version and build number.** The P1 record above spends three of
+10. ✅ **Show the version and build number.** The P1 record above spends three of
     four builds on a phone running none of the code and names a visible build
     number as the fix. A small `1.0.0 (42)` at the foot of Profile is both a
     professionalism signal and that fix.
+    *Done prior sessions.* "Fore Swing $appVersion" shown in the
+    `_DiagnosticsSection` of profile_screen.dart.
 
-11. **Settle the name, and give it a face.** `main.dart:76` still says
+11. ✅ **Settle the name, and give it a face.** `main.dart:76` still says
     `'Golf Swing Analyzer'` while the home-screen icon says **Fore Swing**
     (`configure_ios.py:78`, which correctly defers the in-app strings to this
     pass). Pick Fore Swing everywhere, and add a wordmark and launch screen in
     the dark camera-first palette. There is currently no icon, no launch
     screen, and no visual identity of any kind.
+    *Partially done prior sessions.* `main.dart` title set to `'Fore Swing'`.
+    App icon and launch screen still outstanding.
 
-#### Tier 3 — details that read as unfinished
+#### ✅ Tier 3 — details that read as unfinished
 
-- **Misleading iconography.** `Icons.remove_circle_outline` for "not seen"
+*All items addressed in prior sessions.*
+
+- ✅ **Misleading iconography.** `Icons.remove_circle_outline` for "not seen"
   (`fault_card.dart:75`) reads as *blocked*; a beaker marks both the beta
   banner and the calibration control; `videocam` means "record another".
   Curate a small set and drop icons where the label suffices.
-- **Status is signalled by color alone** — amber vs `scheme.outline` is the
+  *Done.* `info_outline` (flagged) / `check_circle_outline` (not seen).
+- ✅ **Status is signalled by color alone** — amber vs `scheme.outline` is the
   only difference between `POSSIBLE` and `NOT SEEN` (`fault_card.dart:36`,
   `:88-98`). Add shape or a glyph, and `Semantics` labels, of which there are
   currently none anywhere.
-- **Hand-formatted dates.** `_two()` produces `2026-08-20 14:03`
+  *Done.* Distinct icons plus text labels ("Possible" / "Not flagged").
+- ✅ **Hand-formatted dates.** `_two()` produces `2026-08-20 14:03`
   (`swing_comparison_view.dart:38-43`). That is a log line; `intl`'s
   "Yesterday, 2:03 pm" is a product.
-- **Fixed-width rows will overflow at large accessibility text sizes** —
+  *Done.* `_friendlyDate()` produces "Aug 20, 2:03 pm"; swings list uses
+  relative dates (Today/Yesterday).
+- ✅ **Fixed-width rows will overflow at large accessibility text sizes** —
   notably the `SizedBox(width: 26)` used as indentation at
   `record_screen.dart:333` and the label/control rows beside it.
-- **No `SafeArea` anywhere.** Harmless while every screen has an AppBar;
+  *Done.* Fixed-width `SizedBox` removed; flexible layout used.
+- ✅ **No `SafeArea` anywhere.** Harmless while every screen has an AppBar;
   breaks the moment the camera screen goes edge-to-edge under item 2.
-- **Uppercase micro-badges** (`POSSIBLE`, `NOT SEEN`, and lowercase
+  *Done.* `SafeArea` added to record and analyzing screens.
+- ✅ **Uppercase micro-badges** (`POSSIBLE`, `NOT SEEN`, and lowercase
   `beginner`/`advanced` at `drill_tile.dart:52`) are generic-dashboard
   styling — and the difficulty badge prints the raw JSON enum value.
+  *Done.* Proper casing: "Possible"/"Not flagged", `_capitalize()` for
+  drill difficulties.
 
 #### ✅ A likely bug found while reading — fixed
 
