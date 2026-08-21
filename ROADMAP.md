@@ -1787,21 +1787,32 @@ A golfer reads all of that in about two seconds, before a single word.
    list of past measurements makes no trend or improvement claim, so the
    `Trend` / `Crossing` machinery stays unsurfaced exactly as required.
 
-7. **Decide the navigation instead of inheriting it.** Today: Record → push
+7. ✅ **Decide the navigation instead of inheriting it.** Today: Record → push
    Analyzing → replace with Report, with "record another" as a `videocam` icon
    running `popUntil(isFirst)` (`report_screen.dart:44-50`). Camera-first is a
    defensible product choice; three-deep pushes with no shell is what happens
    when nobody chose. Either a three-tab shell (Record / Swings / Profile) or
    an explicit "we open straight into the viewfinder" decision recorded here.
    Either is fine; the accident is not.
+   *Done 2025-08-21.* Three-tab shell (Record / Swings / Profile) via
+   `HomeShell` in `home_shell.dart`. Camera-first by design (tab 0).
+   IndexedStack keeps the camera controller alive across tab switches.
+   Profile button removed from the camera overlay. Swings tab is a
+   placeholder pending item 6.
 
-8. **The Analyzing screen is the longest wait and the least reassuring.**
+8. ✅ **The Analyzing screen is the longest wait and the least reassuring.**
    `analyzing_screen.dart:196-228` shows a 220px `LinearProgressIndicator`,
    indeterminate for two of three stages, reading "Extracting frames…" — where
    the trailing ellipsis on every stage label is itself a generated-code tell.
    Make it a three-step stepper with a determinate arc, show the first frame of
    *their* swing behind it so the wait reads as work on their video, and add a
    cancel. This runs over a ~50 MB file.
+   *Done 2025-08-21.* Edge-to-edge dark screen with the golfer's first
+   frame as a dimmed background (extracted via ffmpeg in milliseconds).
+   120px circular progress arc (determinate during pose detection,
+   indeterminate otherwise) with three-step stepper below. Close button
+   top-left for cancel. Stage labels: "Reading video", "Finding your
+   body", "Building report".
 
 9. **Profile is a document, not a settings screen** — hand-built `Padding` +
    `Text` + `Divider(height: 32)` sequences where list components belong. Two
