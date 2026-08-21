@@ -725,6 +725,62 @@ with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
 read as the fastest descent in the clip. Every clip in the corpus carries a
 few: 3 to 19 jumps over 0.5 torso-lengths each.
 
+#### P1.1 — THE GATE IS WRONG IN BOTH DIRECTIONS (2026-08-20)
+
+Six clips were filmed to test it: three varied swing routines and three
+deliberate negatives. The gate's full behaviour, for the first time:
+
+```
+clip                                    contains   gate said        verdict
+1  walk in, club already down, swing     a swing   "not a swing"    FALSE NEGATIVE
+2  walk in, settle, pause, swing         a swing    full report     ok
+3  practice swing, then the real one     a swing    full report     ok
+4  empty range, nobody in frame          nothing   "not a swing"    ok
+5  walk in, stand there, walk out        nothing    full report     FALSE POSITIVE
+6  set up to the ball, then step away    nothing    full report     FALSE POSITIVE
+```
+
+**It rejected a real swing and accepted two non-swings.** The false negative is
+in some ways the worse one: the golfer did everything asked — side-on, whole
+body in frame, camera still — and was told *"that didn't look like a golf
+swing."* Being wrong in both directions at once means the gate is not
+mis-tuned; it is not measuring the thing it claims to measure.
+
+**Clip 1's data is gone**, which is precisely the defect the rejection log
+fixes: a hard fail wrote nothing, so the one clip that would explain *why* a
+real swing gets rejected cannot be examined. The fix is committed and is not on
+the phone yet. **Re-film clip 1 after the next release**, because it is the
+most diagnostic clip in the set.
+
+**The negatives are now three, not one.** Clips 5 and 6 are recorded as
+`no_swing` with `basis: video`. Against them:
+
+```
+                    07:12:22    180317    180347
+detect_phases        invents    invents   invents
+locate_swing         invents    invents   invents
+stance_bounded       invents   DECLINES   invents
+```
+
+One decline out of three, and it came from a mechanism rather than a threshold:
+on 180317 the golfer never stood still long enough to form a stance, so there
+was nothing to search. **That is the first time any localizer has correctly
+refused a clip with a person in it.** It is one clip. It is not a gate.
+
+**A flaw in the stance work, found by these clips and fixed.** When stance
+bounding found no stance, `detect_phases` fell through to peak localization —
+measured at 0/10 — and turned that decline into an invented swing at 0.2 s. A
+caller who opts into stance bounding is asking a question whose answer may be
+"there is no stance"; swallowing that answer to produce a guess is strictly
+worse than returning it.
+
+**What the practice-swing clip did to the stance bound.** Clip 3 holds two
+excursions, ~8 s and ~13-14 s, and the stance (5.2-16.1 s) contains both. The
+stance-bounded search picked the first. This was predicted before the clip
+existed: a stance bound cannot separate two swings that both happen while the
+golfer is standing still. Which of the two was the practice swing is not yet
+recorded, and the result is not interpretable until it is.
+
 #### P1.1 — THE GATE WORKS ON AN EMPTY FRAME, AND THE APP WAS BINNING THE EVIDENCE (2026-08-20)
 
 Filming the empty range — camera running, nobody in frame — produced the hard

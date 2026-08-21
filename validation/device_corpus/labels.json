@@ -181,12 +181,14 @@
       "sheet": "sheets/swing_20260820_180317.png",
       "frame_count": 323,
       "fps": 29.97002997002997,
-      "label_basis": null,
+      "label_basis": "video",
       "swing_start_s": null,
       "takeaway_s": null,
       "top_s": null,
       "impact_s": null,
-      "finish_s": null
+      "finish_s": null,
+      "no_swing": true,
+      "swing_start_source": "golfer, 2026-08-20: filmed as a deliberate negative -- clip 5 'walk in, stand there, walk out' and clip 6 'set up to the ball then step away'. Confirmed by the sheet: flat near 0 torso-lengths throughout, no excursion anywhere. This is clip 5 (walk in, stand, walk out)."
     },
     {
       "timestamp": "2026-08-20T18:03:57-07:00",
@@ -194,12 +196,14 @@
       "sheet": "sheets/swing_20260820_180347.png",
       "frame_count": 410,
       "fps": 29.97002997002997,
-      "label_basis": null,
+      "label_basis": "video",
       "swing_start_s": null,
       "takeaway_s": null,
       "top_s": null,
       "impact_s": null,
-      "finish_s": null
+      "finish_s": null,
+      "no_swing": true,
+      "swing_start_source": "golfer, 2026-08-20: filmed as a deliberate negative -- clip 5 'walk in, stand there, walk out' and clip 6 'set up to the ball then step away'. Confirmed by the sheet: flat near 0 torso-lengths throughout, no excursion anywhere. This is clip 6 (set up, then step away)."
     }
   ],
   "negative_note": "`no_swing: true` marks a clip that contains no swing at all. A detector that reports phases here is not merely imprecise, it is inventing a swing -- which is the P1.1 defect: the app produced a full fault report with drills for a video of nothing."
