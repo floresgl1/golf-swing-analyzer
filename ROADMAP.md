@@ -725,6 +725,66 @@ with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
 read as the fastest descent in the clip. Every clip in the corpus carries a
 few: 3 to 19 jumps over 0.5 torso-lengths each.
 
+#### P1.4 — STANCE-BOUNDED SEARCH PASSES THE NECESSARY CONDITION (2026-08-20)
+
+Every localization failure on record happens **outside the stance**. Filming
+yourself produces walk-in, stance, walk-away; only the stance can contain a
+swing. `stance_bounds()` finds the longest run where the hips do not travel —
+hip displacement over a one-second window, in torso lengths — and
+`locate_swing(..., hip_x=)` searches only inside it.
+
+```
+                    detect_phases   locate_swing   stance_bounded
+video labels (6)         0/6             2/6            6/6
+sheet labels (4)         0/4             0/4            3/4
+nothing-clip          invents         invents        invents
+```
+
+**It works for the mechanism it was built on, not by luck.** The windows it
+finds start after the walk-in and end before the walk-away on all eleven clips
+— 4.0-5.8 s to 10.1-15.6 s — and every labelled swing falls inside. On
+`swing_..._193851.mp4`, the clip that defeated `locate_swing`, the stance
+begins at 4.0 s, which excludes the club being lowered at ~3 s, and the anchor
+moves from 2.97 s to 6.9 s.
+
+**The constant does not carry the result.** `STANCE_TRAVEL_MAX` gives an
+identical answer from **0.25 through 1.5**, a six-fold range; it only degrades
+at 2.0, where the window grows enough to re-admit part of the walk-in. Compare
+`DESCENT_SMOOTH_S`, whose plateau had to be discovered after the fact.
+
+**This is NOT validation, and the reason is written down before anyone quotes
+the 6/6.** All six video-labelled clips are the same golfer doing the same
+routine — one condition measured six times. `locate_swing` scored 2/3 on
+exactly this kind of evidence and then 0/3 on the next three identical swings.
+**A number that looks like this has already fooled this project once.** What
+6/6 buys is the *necessary* condition stated in advance: a stance-bounded
+search that could not find these six would have been dead on arrival. It
+cleared that bar and nothing more.
+
+**What would validate it:** clips where the routine varies — club already down
+during the walk-in, a pause after settling, a practice swing before the real
+one. Different setups are the whole point, since the bound's claim is about
+separating setup from swing.
+
+**One label is now suspect, in the detector's favour.** On `07:55:17` the
+stance-bounded anchor lands at 11.4 s against a label of 9.0 s, scored as the
+single sheet-label miss. But the per-second readout of that clip puts its
+excursion at s11-s12, so the *label* is probably wrong: the golfer gave "8-10
+seconds" as one range for four clips, and that one swing came later. Recorded
+rather than corrected — changing a label because a detector disagrees with it
+is how ground truth stops being ground truth.
+
+**Not shipped, and still not reachable from the app.** `hip_x` is opt-in, the
+app passes neither `torso` nor `hip_x`, and behaviour is unchanged. **No Dart
+port**, deliberately: porting an unvalidated localizer would put it one call
+site away from a golfer.
+
+**P1.1 is untouched by this.** The stance-bounded search still invents a swing
+in the nothing-clip (takeaway 3.5 s, top 3.7 s, impact 4.1 s, finish 4.6 s) —
+better-placed nonsense, but nonsense. All three localizers invent one. Finding
+the swing and knowing whether there *is* one are separate problems, and no
+amount of work on the first will close the second.
+
 **RESULT: THE PREDICTION FAILED, AND `locate_swing` IS DEAD (2026-08-20).**
 Three more same-routine swings, labelled from video at ~7 s. Predicted
 `detect_phases` 0/3 and `locate_swing` 2/3. Outcome:

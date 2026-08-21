@@ -83,9 +83,12 @@ def detector_results(record: dict) -> dict[str, dict | None]:
     wrist = np.array(record["frames"]["wrist_y"], dtype=float)
     torso = np.array(record["frames"]["torso"], dtype=float)
     fps = float(record["fps"])
+    hip_x = np.array(record["frames"]["hip_x"], dtype=float)
     return {
         "detect_phases": detect_phases(wrist, fps=fps),
         "locate_swing": detect_phases(wrist, fps=fps, torso=torso),
+        "stance_bounded": detect_phases(wrist, fps=fps, torso=torso,
+                                        hip_x=hip_x),
     }
 
 
@@ -150,7 +153,7 @@ def print_coarse(scored: list[dict]) -> None:
             continue
         label = basis or "basis unrecorded"
         print(f"labels read from {label}:")
-        for name in ("detect_phases", "locate_swing"):
+        for name in ("detect_phases", "locate_swing", "stance_bounded"):
             judged = [s["detectors"][name] for s in subset
                       if s["detectors"].get(name)]
             if not judged:
@@ -249,7 +252,7 @@ def print_report(scored: list[dict]) -> None:
                           f"   off by {offset:+5d}f / {offset / fps:+6.2f}s")
 
     print("\n" + "=" * 60)
-    for name in ("detect_phases", "locate_swing"):
+    for name in ("detect_phases", "locate_swing", "stance_bounded"):
         judged = [s["detectors"][name] for s in scored
                   if s["detectors"].get(name)
                   and s["detectors"][name]["inside_swing"] is not None]
