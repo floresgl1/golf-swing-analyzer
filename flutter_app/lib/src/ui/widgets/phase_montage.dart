@@ -20,19 +20,15 @@ class PhaseMontage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Row(
-          children: [
-            for (var i = 0; i < keyFrames.length; i++) ...[
-              if (i > 0) const SizedBox(width: 2),
-              Expanded(child: _KeyFrameStill(frame: keyFrames[i])),
-            ],
-          ],
-        ),
-      ),
+    // No padding or ClipRRect of its own — the parent Card handles clipping
+    // and margin, so the stills bleed edge-to-edge within the card.
+    return Row(
+      children: [
+        for (var i = 0; i < keyFrames.length; i++) ...[
+          if (i > 0) const SizedBox(width: 2),
+          Expanded(child: _KeyFrameStill(frame: keyFrames[i])),
+        ],
+      ],
     );
   }
 }
