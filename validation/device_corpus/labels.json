@@ -241,12 +241,14 @@
       "sheet": "sheets/swing_20260820_185042.png",
       "frame_count": 396,
       "fps": 29.97002997002997,
-      "label_basis": null,
-      "swing_start_s": null,
+      "label_basis": "video",
+      "swing_start_s": 7.0,
       "takeaway_s": null,
       "top_s": null,
       "impact_s": null,
-      "finish_s": null
+      "finish_s": null,
+      "routine": "1 -- walk in with the club already down, set up, swing",
+      "swing_start_source": "golfer, watching the clips, 2026-08-20: 'all 4 swings started around 7 seconds'. Routine 1 (club already down during the walk-in) -- the first varied routine in the corpus."
     },
     {
       "timestamp": "2026-08-20T18:51:17-07:00",
@@ -254,12 +256,14 @@
       "sheet": "sheets/swing_20260820_185108.png",
       "frame_count": 410,
       "fps": 29.97002997002997,
-      "label_basis": null,
-      "swing_start_s": null,
+      "label_basis": "video",
+      "swing_start_s": 7.0,
       "takeaway_s": null,
       "top_s": null,
       "impact_s": null,
-      "finish_s": null
+      "finish_s": null,
+      "routine": "1 -- walk in with the club already down, set up, swing",
+      "swing_start_source": "golfer, watching the clips, 2026-08-20: 'all 4 swings started around 7 seconds'. Routine 1 (club already down during the walk-in) -- the first varied routine in the corpus."
     },
     {
       "timestamp": "2026-08-20T18:51:43-07:00",
@@ -267,12 +271,14 @@
       "sheet": "sheets/swing_20260820_185134.png",
       "frame_count": 386,
       "fps": 29.97002997002997,
-      "label_basis": null,
-      "swing_start_s": null,
+      "label_basis": "video",
+      "swing_start_s": 7.0,
       "takeaway_s": null,
       "top_s": null,
       "impact_s": null,
-      "finish_s": null
+      "finish_s": null,
+      "routine": "1 -- walk in with the club already down, set up, swing",
+      "swing_start_source": "golfer, watching the clips, 2026-08-20: 'all 4 swings started around 7 seconds'. Routine 1 (club already down during the walk-in) -- the first varied routine in the corpus."
     }
   ],
   "negative_note": "`no_swing: true` marks a clip that contains no swing at all. A detector that reports phases here is not merely imprecise, it is inventing a swing -- which is the P1.1 defect: the app produced a full fault report with drills for a video of nothing.",

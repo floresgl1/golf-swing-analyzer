@@ -725,6 +725,29 @@ with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
 read as the fastest descent in the clip. Every clip in the corpus carries a
 few: 3 to 19 jumps over 0.5 torso-lengths each.
 
+#### SCOREBOARD (2026-08-20, 20 clips: 17 labelled, 3 negatives)
+
+```
+                    video labels   sheet labels   negatives declined
+detect_phases          0/10            0/4              0/3
+locate_swing           3/10            0/4              0/3
+stance_bounded         9/10            3/4              1/3
+```
+
+The single `stance_bounded` miss under video labels is the practice-swing clip,
+where it anchored on the practice swing rather than the real one. Every other
+video-labelled swing it finds, across two routines.
+
+**What is still not established.** Two routines, one golfer, one phone, one
+camera position, 30 fps. The negatives number three and only one is declined.
+And the practice-swing failure is not a tuning problem — a practice swing is a
+real swing inside the stance, so nothing in the signal separates it.
+
+**Still nothing shipped.** `hip_x` is opt-in, the app passes neither `torso`
+nor `hip_x`, and there is no Dart port. The app's behaviour today is the
+`detect_phases` row: 0/14 on labelled swings, inventing a swing on all three
+negatives.
+
 #### P1.1 — THE GATE IS WRONG IN BOTH DIRECTIONS (2026-08-20)
 
 Six clips were filmed to test it: three varied swing routines and three
@@ -764,10 +787,16 @@ swing_..._185108.mp4     5.1-11.1s          0.0s           2.5s           8.5s
 swing_..._185134.mp4     5.0-10.9s          0.0s           7.6s           7.6s
 ```
 
-Every visible excursion sits at s7-s9, so `stance_bounded` matches all four
-while the other two do not. **Awaiting the golfer's times before this is
-scored** — the sheet reading is mine, and a label I produce is not ground
-truth.
+Labelled by the golfer at ~7 s, all four: **`stance_bounded` finds all four,
+`locate_swing` finds one, `detect_phases` none.**
+
+**This is the first evidence for the stance bound that is not one routine
+measured repeatedly.** The six clips it originally cleared were the same
+walk-in-with-the-club-up routine six times; these four are a different setup,
+labelled from video, and it holds. That upgrades the earlier 6/6 from "passed
+a necessary condition" to "held on a routine it was not built against" — which
+is not the same as validated, and the difference is still worth keeping in
+view: two routines by one golfer on one phone.
 
 **Removing one distractor did not rescue the unbounded localizer**, which is
 the interesting part. With no club-lowering to catch, `locate_swing` moved its
