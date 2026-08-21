@@ -221,6 +221,58 @@
       "top_s": null,
       "impact_s": null,
       "finish_s": null
+    },
+    {
+      "timestamp": "2026-08-20T18:50:26-07:00",
+      "clip_name": "swing_20260820_185017.mp4",
+      "sheet": "sheets/swing_20260820_185017.png",
+      "frame_count": 392,
+      "fps": 29.97002997002997,
+      "label_basis": null,
+      "swing_start_s": null,
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null
+    },
+    {
+      "timestamp": "2026-08-20T18:50:51-07:00",
+      "clip_name": "swing_20260820_185042.mp4",
+      "sheet": "sheets/swing_20260820_185042.png",
+      "frame_count": 396,
+      "fps": 29.97002997002997,
+      "label_basis": null,
+      "swing_start_s": null,
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null
+    },
+    {
+      "timestamp": "2026-08-20T18:51:17-07:00",
+      "clip_name": "swing_20260820_185108.mp4",
+      "sheet": "sheets/swing_20260820_185108.png",
+      "frame_count": 410,
+      "fps": 29.97002997002997,
+      "label_basis": null,
+      "swing_start_s": null,
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null
+    },
+    {
+      "timestamp": "2026-08-20T18:51:43-07:00",
+      "clip_name": "swing_20260820_185134.mp4",
+      "sheet": "sheets/swing_20260820_185134.png",
+      "frame_count": 386,
+      "fps": 29.97002997002997,
+      "label_basis": null,
+      "swing_start_s": null,
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null
     }
   ],
   "negative_note": "`no_swing: true` marks a clip that contains no swing at all. A detector that reports phases here is not merely imprecise, it is inventing a swing -- which is the P1.1 defect: the app produced a full fault report with drills for a video of nothing.",

@@ -746,6 +746,36 @@ body in frame, camera still — and was told *"that didn't look like a golf
 swing."* Being wrong in both directions at once means the gate is not
 mis-tuned; it is not measuring the thing it claims to measure.
 
+**Clip 1 filmed four more times (2026-08-20 18:50): all four accepted.** The
+false negative has now happened once in six attempts of the same routine and
+has not reproduced. Nothing can be said about what triggers it, and the one
+clip that could have said anything is the one whose data was discarded.
+
+**These four are the first varied-routine data the stance bound has faced.**
+Routine 1 is *walk in with the club already down*, which removes the distractor
+that beat `locate_swing` on 2026-08-19 — there is no club being lowered into
+address, because it was never raised. Stance windows and anchors:
+
+```
+clip                       stance        detect_phases  locate_swing  stance_bounded
+swing_..._185017.mp4     4.8-10.7s          0.1s          12.6s           7.8s
+swing_..._185042.mp4     4.5-10.5s          0.2s          11.4s           7.8s
+swing_..._185108.mp4     5.1-11.1s          0.0s           2.5s           8.5s
+swing_..._185134.mp4     5.0-10.9s          0.0s           7.6s           7.6s
+```
+
+Every visible excursion sits at s7-s9, so `stance_bounded` matches all four
+while the other two do not. **Awaiting the golfer's times before this is
+scored** — the sheet reading is mine, and a label I produce is not ground
+truth.
+
+**Removing one distractor did not rescue the unbounded localizer**, which is
+the interesting part. With no club-lowering to catch, `locate_swing` moved its
+failures to **11.4 s and 12.6 s — the walk-away** instead of the walk-in. There
+is always another competing descent outside the stance; eliminating them one at
+a time is not a strategy, which is the argument for bounding rather than
+cleaning.
+
 **Clip 1 re-filmed 2026-08-20: the same routine was ACCEPTED.** Walk in with
 the club already down, set up, swing — rejected the first time, analyzed
 without complaint the second (`swing_20260820_182232.mp4`, 13.9 s, coverage
