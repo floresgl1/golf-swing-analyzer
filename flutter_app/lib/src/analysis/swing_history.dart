@@ -453,12 +453,12 @@ class FaultComparison {
   /// Display label, e.g. "Head sway".
   String get label => faultLabels[faultId] ?? faultId;
 
-  /// "0.18 -> 0.09 torso-lengths", matching the Python report line.
-  String get valuesText => '${formatFaultValue(faultId, previous)} -> '
-      '${formatFaultValue(faultId, current)} ${faultUnits[faultId]}';
+  /// "0.18 → 0.09", read as "last time then this time".
+  String get valuesText => '${formatFaultValue(faultId, previous)} → '
+      '${formatFaultValue(faultId, current)}';
 }
 
-/// Tempo ratio previous -> current, judged by distance from [tempoIdeal].
+/// Tempo ratio last swing → this swing, judged by distance from [tempoIdeal].
 class TempoComparison {
   final double previous;
   final double current;
@@ -471,7 +471,7 @@ class TempoComparison {
   });
 
   String get valuesText =>
-      '${previous.toStringAsFixed(1)}:1 -> ${current.toStringAsFixed(1)}:1';
+      '${previous.toStringAsFixed(1)} : 1 → ${current.toStringAsFixed(1)} : 1';
 }
 
 /// The full progress report between two sessions.

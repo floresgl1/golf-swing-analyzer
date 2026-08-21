@@ -71,7 +71,7 @@ void main() {
       final head = faultCmp(faultHeadSway);
       expect(head.trend, Trend.improved);
       expect(head.crossing, Crossing.faultFixed);
-      expect(head.valuesText, '0.18 -> 0.09 torso-lengths');
+      expect(head.valuesText, '0.18 → 0.09');
     });
 
     test('rising value reads as worsened; crossing up reads as new fault', () {
@@ -96,7 +96,7 @@ void main() {
 
     test('tempo is judged by distance from the 3:1 benchmark', () {
       expect(cmp.tempo!.trend, Trend.improved); // 2.4 -> 2.9, closer to 3.0
-      expect(cmp.tempo!.valuesText, '2.4:1 -> 2.9:1');
+      expect(cmp.tempo!.valuesText, '2.4 : 1 → 2.9 : 1');
     });
 
     test('a fault with a null value in either session is skipped', () {

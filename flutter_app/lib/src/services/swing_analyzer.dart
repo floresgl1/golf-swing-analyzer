@@ -237,9 +237,7 @@ class SwingAnalyzer {
         flagged: head.flagged,
         measured: head.lateral,
         reference: swayThreshold,
-        detail: 'Moved ${_fmt(head.lateral)} sideways '
-            '(ref ${_fmt(swayThreshold)}). '
-            'Vertical dip ${_fmt(head.vertical)}.',
+        detail: _headSwayDetail(head),
       ),
       FaultVerdict(
         id: faultReversePivot,
@@ -247,8 +245,7 @@ class SwingAnalyzer {
         flagged: pivot.flagged,
         measured: pivot.reverse,
         reference: reversePivotThreshold,
-        detail: 'Spine leaned ${_fmtSigned(pivot.reverse)} toward target '
-            '(ref ${_fmt(reversePivotThreshold)}).',
+        detail: _reversePivotDetail(pivot),
       ),
       FaultVerdict(
         id: faultEarlyExtension,
@@ -256,8 +253,7 @@ class SwingAnalyzer {
         flagged: extension.flagged,
         measured: extension.rise,
         reference: earlyExtensionThreshold,
-        detail: 'Hips rose ${_fmtSigned(extension.rise)} during downswing '
-            '(ref ${_fmt(earlyExtensionThreshold)}).',
+        detail: _earlyExtensionDetail(extension),
       ),
       FaultVerdict(
         id: faultLossOfPosture,
@@ -266,10 +262,7 @@ class SwingAnalyzer {
         measured: posture.straighten,
         reference: postureThreshold,
         isAngle: true,
-        detail: 'Spine ${_fmtDeg(posture.tiltAddress)} → '
-            '${_fmtDeg(posture.tiltImpact)}, '
-            '${_fmtSignedDeg(posture.straighten)} change '
-            '(ref ${_fmtDeg(postureThreshold)}).',
+        detail: _lossOfPostureDetail(posture),
       ),
     ];
 
@@ -362,13 +355,58 @@ class SwingAnalyzer {
 
   Future<void> dispose() => _poseEstimator.dispose();
 
+  // ---------------------------------------------------------------------------
+  // Fault detail copy — written for a golfer, not a log file.
+  //
+  // Each detail sits under a "Possible" or "Not flagged" badge and next to a
+  // MeasurementGauge, so it does not need to restate both numbers — the gauge
+  // draws them. The text says what was observed, in terms that mean something
+  // to someone holding a club. The gauge line beneath carries the numeric
+  // precision for anyone who wants it.
+  //
+  // THE CONSTRAINT (ROADMAP § Product voice): every hedge the old copy carried
+  // is preserved. The tentative framing is structural (the badge), so the
+  // detail itself stays plain — describing the measurement, not diagnosing the
+  // swing. "Your head drifted sideways" is an observation; "you have head
+  // sway" would be a diagnosis the thresholds can't support.
+  // ---------------------------------------------------------------------------
+
+  static String _headSwayDetail(HeadMovementResult head) {
+    final lateralWord = head.flagged ? 'drifted' : 'stayed fairly quiet';
+    final dip = head.vertical.isFinite && head.vertical.abs() > 0.02
+        ? ' Dipped ${_fmt(head.vertical)} vertically.'
+        : '';
+    return head.flagged
+        ? 'Your head $lateralWord from address to impact.$dip'
+        : 'Your head $lateralWord through the swing.$dip';
+  }
+
+  static String _reversePivotDetail(ReversePivotResult pivot) {
+    return pivot.flagged
+        ? 'Your spine leaned toward the target at the top instead of '
+            'loading behind the ball.'
+        : 'Good weight loading — spine stayed behind the ball at the top.';
+  }
+
+  static String _earlyExtensionDetail(EarlyExtensionResult ext) {
+    return ext.flagged
+        ? 'Your hips moved toward the ball during the downswing. '
+            'Try to keep them back through impact.'
+        : 'Hips stayed in posture through the downswing.';
+  }
+
+  static String _lossOfPostureDetail(LossOfPostureResult posture) {
+    final change = posture.straighten;
+    if (!change.isFinite) return 'Spine angle could not be measured.';
+    return posture.flagged
+        ? 'Your spine straightened ${_fmtDeg(change.abs())} from address to '
+            'impact — try to hold your tilt through the ball.'
+        : 'Good posture — spine angle held steady through impact.';
+  }
+
   static String _fmt(double v) => v.isFinite ? v.toStringAsFixed(2) : '—';
-  static String _fmtSigned(double v) =>
-      v.isFinite ? '${v >= 0 ? '+' : ''}${v.toStringAsFixed(2)}' : '—';
   static String _fmtDeg(double v) =>
       v.isFinite ? '${v.toStringAsFixed(0)}°' : '—';
-  static String _fmtSignedDeg(double v) =>
-      v.isFinite ? '${v >= 0 ? '+' : ''}${v.toStringAsFixed(0)}°' : '—';
 }
 
 /// Bundles a key frame spec for [SwingAnalyzer._preserveKeyFrames].

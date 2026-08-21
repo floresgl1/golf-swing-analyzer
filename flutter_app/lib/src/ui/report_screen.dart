@@ -495,9 +495,8 @@ class _NotSavedNotice extends StatelessWidget {
             Gap.hsm,
             Expanded(
               child: Text(
-                'This swing could not be saved to your swing history. The '
-                'report below is still accurate, but this swing will not appear '
-                'in your history or in an export.',
+                'This swing wasn\'t saved — your report is still here, '
+                'but it won\'t show up in your history.',
                 style: TextStyle(color: scheme.onErrorContainer),
               ),
             ),
@@ -540,8 +539,8 @@ class _CleanSwingBanner extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Text(
-          'Nothing flagged on this swing. We only check four things, '
-          'so this isn\'t a clean bill of health — just nothing caught.',
+          'Nothing flagged. We only check four things so far — '
+          'this just means nothing stood out.',
           style: theme.textTheme.bodyMedium,
         ),
       ),
@@ -571,6 +570,5 @@ String _tempoCaveat(SwingTempo? tempo, double fps) {
   // to a friendlier-looking figure. Overstating the uncertainty is a smaller
   // lie than understating it, but it is still a lie.
   final window = precision.toStringAsFixed(precision < 0.1 ? 2 : 1);
-  return '$rate At this frame rate the ratio is accurate to about '
-      '±$window.';
+  return '$rate Ratio is accurate to about ±$window.';
 }
