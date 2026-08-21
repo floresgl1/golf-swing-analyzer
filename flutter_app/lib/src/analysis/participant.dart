@@ -61,6 +61,16 @@ class Participant {
   /// Per fault id: has a coach identified this fault in this golfer?
   final Map<String, CoachConfirmation> coachReports;
 
+  /// When true, the next swing is recorded as a calibration swing — a
+  /// labelled positive control with one fault deliberately exaggerated.
+  /// Lives on the participant rather than the record screen because the
+  /// ROADMAP requires it off the viewfinder and behind a Profile toggle.
+  final bool calibrationMode;
+
+  /// The fault being deliberately exaggerated on a calibration swing. Only
+  /// meaningful when [calibrationMode] is true. Defaults to head sway.
+  final String? calibrationFault;
+
   /// Unknown keys from the stored file, preserved on write.
   final Map<String, dynamic> _source;
 
@@ -69,18 +79,24 @@ class Participant {
     required this.createdAt,
     this.handedness,
     this.coachReports = const {},
+    this.calibrationMode = false,
+    this.calibrationFault,
     Map<String, dynamic> source = const <String, dynamic>{},
   }) : _source = source;
 
   Participant copyWith({
     Handedness? handedness,
     Map<String, CoachConfirmation>? coachReports,
+    bool? calibrationMode,
+    String? calibrationFault,
   }) =>
       Participant(
         id: id,
         createdAt: createdAt,
         handedness: handedness ?? this.handedness,
         coachReports: coachReports ?? this.coachReports,
+        calibrationMode: calibrationMode ?? this.calibrationMode,
+        calibrationFault: calibrationFault ?? this.calibrationFault,
         source: _source,
       );
 
@@ -98,6 +114,8 @@ class Participant {
       createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
       handedness: Handedness.tryParse(json['handedness']),
       coachReports: reports,
+      calibrationMode: json['calibration_mode'] == true,
+      calibrationFault: json['calibration_fault'] as String?,
       source: json,
     );
   }
@@ -110,6 +128,8 @@ class Participant {
         'coach_reports': {
           for (final entry in coachReports.entries) entry.key: entry.value.id,
         },
+        'calibration_mode': calibrationMode,
+        if (calibrationFault != null) 'calibration_fault': calibrationFault,
       };
 
   /// A fresh anonymous participant with a random id.
@@ -217,6 +237,20 @@ class ParticipantStore {
   Future<Participant> setHandedness(Handedness handedness) async {
     final current = await loadOrCreate();
     final updated = current.copyWith(handedness: handedness);
+    await save(updated);
+    return updated;
+  }
+
+  /// Toggle calibration mode on or off, optionally setting the fault.
+  Future<Participant> setCalibration({
+    required bool enabled,
+    String? fault,
+  }) async {
+    final current = await loadOrCreate();
+    final updated = current.copyWith(
+      calibrationMode: enabled,
+      calibrationFault: fault ?? current.calibrationFault,
+    );
     await save(updated);
     return updated;
   }
