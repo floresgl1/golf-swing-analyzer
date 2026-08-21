@@ -415,7 +415,17 @@ One ULP. It cannot change a verdict on any real swing — a golfer's spine angle
 - Test on both iOS and Android if possible
 - Address any ML Kit keypoint accuracy issues (may need threshold adjustments for mobile)
 
-#### P1.1 — The app cannot say "that wasn't a swing" (found on device 2026-08-17)
+#### P1.1 — The app cannot say "that wasn't a swing" (found on device 2026-08-17) — STILL OPEN
+
+**Status 2026-08-20: still open, now measured, and partly improved.** Six clips
+filmed to test the gate showed it is wrong in **both** directions — it rejected
+a real swing and accepted two clips containing no swing. Shipping the
+stance-bounded localization improved this without closing it: the app now
+declines a clip where the golfer never settled (1 of 3 negatives) instead of
+inventing a swing in it, but two negatives still get full reports. Read the
+three 2026-08-20 P1.1 sections below for the measurements. **Finding the swing
+and knowing whether there is one are different problems; no amount of work on
+the first closes the second.**
 
 **First real device test, first finding.** A video of *nothing* — no golfer, no
 swing — produced a complete report: a `POSSIBLE` head-sway verdict at 0.44
@@ -570,7 +580,30 @@ nothing but the filesystem. The share sheet remains, but a corpus P0.1 cannot
 proceed without should not have a single route off the device, and that route
 should not be the one with four builds of platform quirks behind it.
 
-#### P1.3 — `detect_phases` does not find the swing in a real phone clip (2026-08-17)
+#### P1.3 / P1.4 — READ IN THIS ORDER
+
+The sections below were written as the work happened and are therefore in the
+order they were *discovered*, not the order they make sense in. Several state
+conclusions that later sections falsify. **Read them in this order, and treat a
+later date as overriding an earlier one:**
+
+1. `P1.3` (2026-08-17) — the original failure, still accurate as a description
+   of `detect_phases`.
+2. `P1.4` (2026-08-17) — the first localization attempt. **Two of its
+   conclusions were later falsified by labels.** Kept for the reasoning.
+3. `P1.4 — FIRST MEASUREMENT AGAINST LABELS` (2026-08-20).
+4. `P1.4 — STANCE-BOUNDED SEARCH PASSES THE NECESSARY CONDITION` (2026-08-20).
+5. `P1.4 — STANCE-BOUNDED LOCALIZATION IS LIVE IN THE APP` (2026-08-20) — the
+   current state.
+6. `SCOREBOARD` (2026-08-20) — where every localization stands, and what is
+   still not established.
+
+**Current state in one line:** the app runs the stance-bounded localization
+(12/14 on labelled swings, declining 1 of 3 no-swing clips). What it ran before
+2026-08-20 scored 0/14. P1.1 — whether a clip contains a swing at all — is
+still open and is a different problem.
+
+#### P1.3 — `detect_phases` does not find the swing in a real phone clip (2026-08-17) — RESOLVED 2026-08-20
 
 **The first five real recordings are off the device, and they invalidate more
 than the gate.** Replaying `detect_phases` on the stored per-frame `wrist_y`:
@@ -626,7 +659,11 @@ corpus — the spec calls for multiple subjects and repeat sessions — but the
 first real data the project has, and the export path that produced it now
 works.
 
-#### P1.4 — Swing localization: prototyped, NOT shipped, blocked on ground truth (2026-08-17)
+#### P1.4 — Swing localization: prototyped, NOT shipped, blocked on ground truth (2026-08-17) — SUPERSEDED 2026-08-20
+
+**Status: the localization described here was replaced. Its `locate_swing` is
+now the *unbounded* form, measured at 2/14 against labels; the shipped path
+adds the stance bound. The two falsified claims are flagged inline below.**
 
 Filming yourself makes a long clip unavoidable: tripod, hit record, walk in,
 settle, swing, walk back, stop. **"Record a shorter clip" is not advice anyone
@@ -653,6 +690,13 @@ fastest downward wrist motion, not a tall peak. `locate_swing()` in
 `src/swing_phases.py` does this and puts the events *inside* the swing on all
 five recordings instead of at frame 1. Tempo ratios came out 3.00 / 2.42 /
 3.93 / 2.00 in one prototype — the right order of magnitude for real golfers.
+
+**SUPERSEDED 2026-08-20 — read the P1.4 sections dated 2026-08-20 below
+instead. Both claims in this paragraph were later falsified by labels: the
+smoothing constant is stable from 0.07 through 0.30 on checkable clips, and the
+unbounded method scores 2/14 rather than being "demonstrably better". The
+stance-bounded form now ships. This text is kept because the reasoning that
+produced a wrong conclusion is worth being able to re-read.**
 
 **It is not shipped, and here is why.** The answer moves with the smoothing
 constant. At `DESCENT_SMOOTH_S` 0.05 s one clip anchors at frame 447; at 0.10 s
@@ -795,10 +839,11 @@ camera position, 30 fps. The negatives number three and only one is declined.
 And the practice-swing failure is not a tuning problem — a practice swing is a
 real swing inside the stance, so nothing in the signal separates it.
 
-**Still nothing shipped.** `hip_x` is opt-in, the app passes neither `torso`
-nor `hip_x`, and there is no Dart port. The app's behaviour today is the
-`detect_phases` row: 0/14 on labelled swings, inventing a swing on all three
-negatives.
+**SHIPPED 2026-08-20.** The app now passes `torso` and `hip_x`, so its
+behaviour is the `stance_bounded` row. Until that change it was the
+`detect_phases` row — 0/14 on labelled swings, inventing a swing on all three
+negatives — which is what a golfer had been getting on every clip ever
+measured.
 
 #### P1.1 — THE GATE IS WRONG IN BOTH DIRECTIONS (2026-08-20)
 
@@ -1027,10 +1072,13 @@ seconds" as one range for four clips, and that one swing came later. Recorded
 rather than corrected — changing a label because a detector disagrees with it
 is how ground truth stops being ground truth.
 
-**Not shipped, and still not reachable from the app.** `hip_x` is opt-in, the
-app passes neither `torso` nor `hip_x`, and behaviour is unchanged. **No Dart
-port**, deliberately: porting an unvalidated localizer would put it one call
-site away from a golfer.
+**Not shipped at the time this was written; SHIPPED later the same day** once
+the varied-routine clips held and the golfer chose to take it. `swing_phases.dart`
+now carries a byte-parallel port, `swing_analyzer.dart` passes `torso` and
+`hip_x`, and a parity fixture requires Dart to reproduce Python's frame indices
+exactly on all 20 committed clips. The caution in this paragraph was right for
+the evidence available when it was written — one routine, measured repeatedly —
+and what changed was the evidence, not the standard.
 
 **P1.1 is untouched by this.** The stance-bounded search still invents a swing
 in the nothing-clip (takeaway 3.5 s, top 3.7 s, impact 4.1 s, finish 4.6 s) —
@@ -1065,7 +1113,9 @@ locate_swing           2/6            0/4        2/10
 **Both localizations are now refuted by measurement**, not by argument. This is
 the outcome the "NOT VALIDATED, NOT USED BY THE APP" guard on `locate_swing`
 existed for: it was never enabled, so nothing shipped on the strength of a
-number that turned out to be luck.
+number that turned out to be luck. (That guard was later lifted — but for the
+*stance-bounded* form, and only after it held on a routine it was not built
+against. The unbounded form described here never shipped and should not.)
 
 **The competing-descent story survives.** The three failures anchor at 2.07 s,
 4.04 s and 0.00 s — all in the walk-in, none in the swing. The pre-registered

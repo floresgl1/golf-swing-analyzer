@@ -317,20 +317,38 @@ def stance_bounds(hip_x, torso, fps, travel_max=STANCE_TRAVEL_MAX):
 def locate_swing(wrist_y, torso, fps, hip_x=None):
     """Locate the four swing events by anchoring on the downswing.
 
-    *** NOT VALIDATED. NOT USED BY THE APP. DO NOT ENABLE WITHOUT READING
-    P1.4 IN ROADMAP.md. ***
+    *** WITH `hip_x` THIS IS WHAT THE APP RUNS as of 2026-08-20. Without it,
+    do not enable it: the unbounded form is measured at 2/14 against device
+    labels. READ P1.4 IN ROADMAP.md BEFORE CHANGING EITHER. ***
 
-    This is demonstrably better than the peak-based localization on the five
-    real recordings -- it puts the events inside the swing rather than at
-    frame 1 -- and it is still a heuristic tuned by eye against clips whose
-    true swing frames nobody has labelled. Its answer moves when
-    DESCENT_SMOOTH_S moves: at 0.05 s the anchor for one clip is frame 447,
-    at 0.10 s it is 272. A constant that swings the answer by six seconds is
-    doing real work, which contradicts the "no calibration debt" claim the
-    block comment above makes for the others.
+    Scored against 14 labelled device swings and 3 labelled no-swing clips:
+
+        peak localization (detect_phases)   0/14 found,  0/3 declined
+        this, unbounded                     2/14 found,  0/3 declined
+        this, bounded by `hip_x`           12/14 found,  1/3 declined
+
+    **Two claims this docstring used to make were false and are recorded here
+    so they are not repeated.** It said the method was "demonstrably better on
+    the five real recordings" -- that was read off plots, and labels put the
+    unbounded form at 2/14. It said the answer moves six seconds between
+    DESCENT_SMOOTH_S 0.05 and 0.10 -- on clips where the swing can actually be
+    checked the answer is identical from 0.07 through 0.30. Both claims were
+    made by looking at unlabelled data, which is the failure mode P0.4 exists
+    to record.
+
+    The remaining known miss is a practice swing: clip 3 of 2026-08-20 holds
+    one at ~8 s and the real swing at ~13 s, both inside the stance, and this
+    takes the first. That is not a tuning problem. A practice swing IS a swing
+    -- right shape, right duration, right descent rate -- so nothing in the
+    signal separates them, and only something that knows which swing the golfer
+    meant can choose.
 
     Returns the same dict as `detect_phases`, or None when the trajectory is
-    too short or has no usable pose.
+    too short, has no usable pose, or -- when `hip_x` was supplied -- when
+    there is no stance. **That last None is an answer, not a gap:** the golfer
+    never stood still, so there is no swing to locate. Do not let a caller fall
+    back to peak localization on it; doing so turned a usable decline into an
+    invented swing at 0.2 s on a no-swing clip.
 
     Why this exists, and why it anchors where it does, is in the block comment
     above the *_SEARCH_S constants. In one line: `detect_phases` looks for the
