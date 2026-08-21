@@ -1702,7 +1702,7 @@ A golfer reads all of that in about two seconds, before a single word.
    as a side effect. Add `Gap.xs/sm/md/lg` (4/8/16/24) and delete the ad-hoc
    `SizedBox`es.
 
-2. **Rebuild the Record screen.** It is the first thing anyone sees and the
+2. ✅ **Rebuild the Record screen.** It is the first thing anyone sees and the
    weakest thing in the app: `record_screen.dart:145-200` puts a Material
    `AppBar` titled "Record your swing" above a live viewfinder, three stacked
    `Colors.black54` panels over the top third holding two `SegmentedButton`s,
@@ -1733,8 +1733,15 @@ A golfer reads all of that in about two seconds, before a single word.
    - **Add a self-timer.** A golfer with a club in their hands and a phone on a
      tripod cannot reach the screen. Its absence is the clearest sign the flow
      has never been used by a golfer.
+   *Done 2026-08-21.* Edge-to-edge viewfinder with circular shutter,
+   focus-picker chips, framing-guide silhouette (CustomPainter), self-timer
+   (3-second countdown with haptics), and mm:ss elapsed readout. Handedness
+   reads from participant record. SwingKindSelector moved to a Calibration
+   section in Profile (toggle + fault picker). CameraPreview aspect-ratio
+   bug fixed: FittedBox.cover + SizedBox sized to the camera's natural
+   ratio, so the preview is center-cropped instead of stretched.
 
-3. **Show the golfer the swing that was measured.** The report contains no
+3. ✅ **Show the golfer the swing that was measured.** The report contains no
    imagery at all — the app claims to have looked at someone's body and then
    shows only sentences. Everything needed already exists: `ClipStore` retains
    every clip, `frame_extractor.dart` pulls frames, per-frame landmarks are in
@@ -1745,6 +1752,12 @@ A golfer reads all of that in about two seconds, before a single word.
    Experience above** out of the someday list: it is what turns numbers into
    evidence, it touches no thresholds, and it finally gives retained clips a
    user-facing purpose beyond occupying storage.
+   *Done 2026-08-21.* PhaseMontage (address/top/impact stills with skeleton
+   overlay) was already in the hero section. Added SwingPlayer widget: inline
+   video_player of the retained clip with a custom scrubber showing Address,
+   Top, Impact, and Finish markers on the timeline. Clip path threaded from
+   AnalyzingScreen → ReportScreen. Tap/drag to scrub, tap video to
+   play/pause. Hidden gracefully when no clip was retained.
 
 4. **Render measurements as instruments, not as prose.**
    `swing_analyzer.dart:160-185` builds English sentences in the *service*
@@ -1861,18 +1874,17 @@ A golfer reads all of that in about two seconds, before a single word.
   `beginner`/`advanced` at `drill_tile.dart:52`) are generic-dashboard
   styling — and the difficulty badge prints the raw JSON enum value.
 
-#### A likely bug found while reading — verify on device
+#### ✅ A likely bug found while reading — fixed
 
-`record_screen.dart:213-216` makes `CameraPreview` a non-positioned child of a
-`Stack(fit: StackFit.expand)`, which passes it **tight** constraints. Its
-internal `AspectRatio` cannot honor its ratio under tight constraints, so the
-preview is very likely being **stretched to the screen** rather than
-letterboxed or center-cropped. Check against a known-square subject.
+`record_screen.dart:213-216` made `CameraPreview` a non-positioned child of a
+`Stack(fit: StackFit.expand)`, which passed it **tight** constraints. Its
+internal `AspectRatio` could not honor its ratio under tight constraints, so the
+preview was likely being **stretched to the screen** rather than
+letterboxed or center-cropped.
 
-This is not cosmetic: the golfer *frames the swing against this preview*, so a
-distorted preview means they frame to a lie — a measurement-quality issue that
-feeds straight into the P0.1 corpus. Fix with an explicit `AspectRatio`, or
-`FittedBox(fit: BoxFit.cover)` with a deliberate crop.
+*Fixed 2026-08-21.* `FittedBox(fit: BoxFit.cover)` with a `SizedBox` sized to
+the camera's natural ratio. The preview is now center-cropped at its true
+aspect ratio instead of stretched to the screen shape.
 
 #### The constraints — read before starting any of this
 
