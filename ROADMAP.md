@@ -1763,13 +1763,18 @@ A golfer reads all of that in about two seconds, before a single word.
    `2.8 : 1 ±0.4` renders the interval `tempoRatioPrecision` already computes
    at `report_screen.dart:200-217`, in place of 30 words prosifying it.
 
-5. **Give the report a hierarchy.** Hero (swing stills + tempo on one strong
+5. ✅ **Give the report a hierarchy.** Hero (swing stills + tempo on one strong
    surface) → the four measurements as a dense list, not four elevated cards →
    drills collapsed under a flagged measurement, expanded only for the focus
    fault → comparison last. `_SectionHeader` (`report_screen.dart:219`) becomes
    a shared component, and the focus treatment (`fault_card.dart:44-49`, a
    1.5px border on an otherwise identical card) becomes one genuinely
    emphasized surface.
+   *Done 2025-08-21.* Hero section merges PhaseMontage + tempo into one
+   Card (stills bleed edge-to-edge, tempo stats horizontal). Focus fault
+   gets a gold-tinted surface with drills expanded. Remaining faults
+   share one dense Card with Dividers and collapsed drill controls.
+   `fault_card.dart` orphaned (no longer imported by the report).
 
 #### Tier 2 — the missing product surfaces
 
