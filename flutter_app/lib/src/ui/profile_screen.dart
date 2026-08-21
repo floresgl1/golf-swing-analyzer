@@ -4,6 +4,7 @@ import '../analysis/participant.dart';
 import '../analysis/swing_history.dart';
 import '../services/clip_store.dart';
 import '../services/corpus_export.dart';
+import 'theme/app_theme.dart';
 
 /// The golfer's own record: their anonymous id, what a coach has told them
 /// about their swing, and the button that gets their swings off the device.
@@ -34,10 +35,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final GlobalKey _exportButtonKey = GlobalKey();
   bool _exporting = false;
 
-  /// Retained recordings: how many and how much space. Null until read.
-  int? _clipCount;
-  int? _clipBytes;
+  /// Retained recordings. Null until read — which is not the same as empty,
+  /// and a golfer told "0 videos" when the read failed would reasonably
+  /// conclude nothing was kept.
+  List<StoredClip>? _clips;
   bool _deletingClips = false;
+
+  /// Anchors each clip's share popover to the button that opened it.
+  final Map<String, GlobalKey> _clipKeys = {};
+
+  int get _clipCount => _clips?.length ?? 0;
+  int get _clipBytes =>
+      _clips?.fold<int>(0, (sum, c) => sum + c.sizeBytes) ?? 0;
 
   @override
   void initState() {
@@ -50,19 +59,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final store = await ClipStore.forApp();
       final clips = await store.list();
       if (!mounted) return;
-      setState(() {
-        _clipCount = clips.length;
-        _clipBytes = clips.fold<int>(0, (sum, c) => sum + c.sizeBytes);
-      });
+      setState(() => _clips = clips);
     } catch (_) {
-      // Leave the figures unknown rather than claiming zero; a golfer told
-      // "0 MB" would reasonably conclude nothing was kept.
-      if (mounted) setState(() => _clipCount = null);
+      // Leave it unknown rather than claiming zero.
+      if (mounted) setState(() => _clips = null);
+    }
+  }
+
+  /// Share one clip, anchored to its own button.
+  ///
+  /// This exists because the Files route did not reach the golfer: the app
+  /// correctly reported "3 recordings, 18 MB" while the folder could not be
+  /// found in Files. Sharing to Photos gives a frame-accurate scrubber, which
+  /// is what reading a swing's timings actually needs.
+  Future<void> _shareClip(StoredClip clip) async {
+    final box = _clipKeys[clip.name]?.currentContext?.findRenderObject()
+        as RenderBox?;
+    final origin = shareOriginOrFallback(
+      box == null
+          ? null
+          : box.localToGlobal(Offset.zero) & box.size,
+      MediaQuery.of(context).size,
+    );
+    try {
+      await shareClip(clip, origin: origin);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not share ${clip.name}: $error')),
+      );
     }
   }
 
   Future<void> _deleteClips() async {
-    final count = _clipCount ?? 0;
+    final count = _clipCount;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -256,22 +286,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
-              _clipCount == null
+              _clips == null
                   ? 'Every swing you record is kept on this phone so it can be '
                       'watched back. Nothing is uploaded.'
-                  : '${_clipCount!} recording${_clipCount == 1 ? '' : 's'}, '
-                      '${formatClipBytes(_clipBytes ?? 0)}. Kept on this phone '
-                      'so your swings can be watched back — nothing is '
-                      'uploaded. They are in the Files app under '
-                      '"On My iPhone".',
+                  : '$_clipCount recording${_clipCount == 1 ? '' : 's'}, '
+                      '${formatClipBytes(_clipBytes)}. Kept on this phone, '
+                      'never uploaded. Tap one to open it — "Save Video" puts '
+                      'it in Photos, where you can scrub through it frame by '
+                      'frame.',
               style: theme.textTheme.bodySmall,
             ),
           ),
+          for (final clip in _clips ?? const <StoredClip>[])
+            ListTile(
+              key: _clipKeys.putIfAbsent(clip.name, GlobalKey.new),
+              dense: true,
+              leading: const Icon(Icons.movie_outlined),
+              title: Text(clip.name, style: theme.textTheme.bodyMedium),
+              subtitle: Text(formatClipBytes(clip.sizeBytes)),
+              trailing: const Icon(Icons.ios_share),
+              onTap: () => _shareClip(clip),
+            ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: OutlinedButton.icon(
               onPressed:
-                  _deletingClips || (_clipCount ?? 0) == 0 ? null : _deleteClips,
+                  _deletingClips || _clipCount == 0 ? null : _deleteClips,
               icon: const Icon(Icons.delete_outline),
               label: Text(_deletingClips ? 'Deleting…' : 'Delete saved videos'),
             ),
@@ -301,7 +341,7 @@ class _CoachReportRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(height: 4),
+          Gap.xs,
           SegmentedButton<CoachConfirmation>(
             segments: const [
               ButtonSegment(value: CoachConfirmation.yes, label: Text('Yes')),

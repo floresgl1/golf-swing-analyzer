@@ -675,6 +675,419 @@ in the swing. Coverage during the swing region is 0.80-0.89, *higher* than the
 0.61-0.81 overall; the gaps (up to 3.9 s) are in the walk-in, before the
 golfer is in frame. Motion blur at 30 fps is not the problem here.
 
+#### P1.4 — FIRST MEASUREMENT AGAINST LABELS (2026-08-20)
+
+The golfer watched the three retained clips and reported: **"the swings all
+start around 7 seconds into each video."** One coarse number per swing, good to
+about a second. That is far short of the four precise events, and it settles
+more than expected — the errors under measurement are *seconds* wide, so a
+one-second label separates a detector that finds the swing from one that finds
+the walk-in. Recorded in `labels.json` with its provenance, and scored by
+`validation/device_corpus/score.py` against an explicit `--window`, never
+against a precision the label does not have.
+
+```
+                    detect_phases      locate_swing     label
+swing_..._193824.mp4   top 0.47s        top 6.84s       ~7.0s
+swing_..._193851.mp4   top 0.17s        top 2.97s       ~7.0s
+swing_..._193916.mp4   top 0.30s        top 8.44s       ~7.0s
+--------------------------------------------------------------
+found the swing            0/3               2/3
+```
+
+**`detect_phases` is refuted, not merely suspected.** It has now missed on
+three labelled swings and eight unlabelled ones, always anchoring in the
+walk-in. This is measurement, not inference from plots.
+
+**The DESCENT_SMOOTH_S objection is weaker than recorded.** The block above
+says the answer moves six seconds between 0.05 and 0.10 — true on the
+2026-08-17 clips. Swept against the labelled ones, the answer is **identical
+from 0.07 through 0.30** (2/3 at every setting; 0.05 drops to 1/3). So on
+clips where a swing can be checked, the constant is not doing the load-bearing
+work the earlier note feared. It is still not enough to ship on: three labels.
+
+**Why the third clip fails — measured, and it is not the smoothing.**
+`locate_swing` anchors at 2.97 s on `swing_..._193851.mp4`. The cause is a
+single-frame tracking discontinuity:
+
+```
+frame 88->89   +1.04 -> +1.20   jump +0.16 torso-lengths in 33ms
+frame 89->90   +1.20 -> +1.04   jump -0.17
+frame 90->91   +1.13            jump +0.09
+frame 91->92   +1.13 -> +0.21   jump -0.92   <-- the anchor
+frame 92->93   +0.21 -> +0.29   jump +0.08
+```
+
+A wrist cannot travel 0.92 torso-lengths — roughly 45 cm — in 33 ms; that is
+~13 m/s, clubhead speed, not wrist speed. The median per-frame jump in this
+clip is **0.027** torso-lengths, so the anchor is **34x** the typical frame,
+with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
+read as the fastest descent in the clip. Every clip in the corpus carries a
+few: 3 to 19 jumps over 0.5 torso-lengths each.
+
+#### P1.1 — THE GATE IS WRONG IN BOTH DIRECTIONS (2026-08-20)
+
+Six clips were filmed to test it: three varied swing routines and three
+deliberate negatives. The gate's full behaviour, for the first time:
+
+```
+clip                                    contains   gate said        verdict
+1  walk in, club already down, swing     a swing   "not a swing"    FALSE NEGATIVE
+2  walk in, settle, pause, swing         a swing    full report     ok
+3  practice swing, then the real one     a swing    full report     ok
+4  empty range, nobody in frame          nothing   "not a swing"    ok
+5  walk in, stand there, walk out        nothing    full report     FALSE POSITIVE
+6  set up to the ball, then step away    nothing    full report     FALSE POSITIVE
+```
+
+**It rejected a real swing and accepted two non-swings.** The false negative is
+in some ways the worse one: the golfer did everything asked — side-on, whole
+body in frame, camera still — and was told *"that didn't look like a golf
+swing."* Being wrong in both directions at once means the gate is not
+mis-tuned; it is not measuring the thing it claims to measure.
+
+**Clip 1 re-filmed 2026-08-20: the same routine was ACCEPTED.** Walk in with
+the club already down, set up, swing — rejected the first time, analyzed
+without complaint the second (`swing_20260820_182232.mp4`, 13.9 s, coverage
+0.68, a clean excursion to 1.09 torso-lengths at s8-s9). Nothing in the build
+changed the gate between the two attempts.
+
+**So the false negative is intermittent, which is worse than a consistent
+one.** A gate that always rejected this routine could be characterised and
+fixed. One that rejects it sometimes cannot be reproduced on demand, and a
+golfer hitting it has no way to tell whether they did something wrong or the
+app simply declined this time. The first attempt's data is still gone, so what
+differed between the two clips is unknown and unknowable — the rejection log
+that would have preserved it is committed but was not on the phone for either
+attempt.
+
+**Clip 1's data is gone**, which is precisely the defect the rejection log
+fixes: a hard fail wrote nothing, so the one clip that would explain *why* a
+real swing gets rejected cannot be examined. The fix is committed and is not on
+the phone yet. **Re-film clip 1 after the next release**, because it is the
+most diagnostic clip in the set.
+
+**The negatives are now three, not one.** Clips 5 and 6 are recorded as
+`no_swing` with `basis: video`. Against them:
+
+```
+                    07:12:22    180317    180347
+detect_phases        invents    invents   invents
+locate_swing         invents    invents   invents
+stance_bounded       invents   DECLINES   invents
+```
+
+One decline out of three, and it came from a mechanism rather than a threshold:
+on 180317 the golfer never stood still long enough to form a stance, so there
+was nothing to search. **That is the first time any localizer has correctly
+refused a clip with a person in it.** It is one clip. It is not a gate.
+
+**A flaw in the stance work, found by these clips and fixed.** When stance
+bounding found no stance, `detect_phases` fell through to peak localization —
+measured at 0/10 — and turned that decline into an invented swing at 0.2 s. A
+caller who opts into stance bounding is asking a question whose answer may be
+"there is no stance"; swallowing that answer to produce a guess is strictly
+worse than returning it.
+
+**The practice swing beats the stance bound, as predicted.** Clip 3 holds two
+excursions, ~8 s and ~13-14 s, and the stance (5.2-16.1 s) contains both. The
+golfer confirms **the first is the practice swing**; the real one is the second.
+The stance-bounded search anchors at 8.01 s — **five seconds early, on the
+practice swing.**
+
+This was predicted before the clip was filmed, which is the only reason it is
+worth anything: a stance bound cannot separate two swings that both happen
+while the golfer is standing still. It is now measured rather than argued.
+
+**Why this distractor is different in kind from the others.** Every failure
+before it came from something that was not a swing — pose garbage in the
+walk-in, a club being lowered into address. Those can, in principle, be
+cleaned away. A practice swing **is a swing**: it happens inside the stance, it
+has the correct shape, the correct duration, the correct descent rate. No
+amount of signal processing distinguishes it, because there is nothing wrong
+with it. Only something that knows *which swing the golfer meant* can choose.
+
+That is a product problem wearing a signal-processing costume, and it points
+at the scrubber ("was this the swing?") already sketched under P1.4 — or at
+the simpler answer of taking the LAST qualifying swing in the stance, on the
+grounds that a golfer practices and then hits. **The last-swing rule is a
+guess with one supporting clip, and it is not being implemented on that.**
+
+Running totals with clip 3 labelled to the real swing:
+
+```
+                    video labels   sheet labels
+detect_phases           0/7            0/4
+locate_swing            2/7            0/4
+stance_bounded          6/7            3/4
+```
+
+#### P1.1 — THE GATE WORKS ON AN EMPTY FRAME, AND THE APP WAS BINNING THE EVIDENCE (2026-08-20)
+
+Filming the empty range — camera running, nobody in frame — produced the hard
+fail: *"That didn't look like a golf swing — no phases were detected."* So the
+shipped gate **does** catch one class of negative, and this is the first
+measured evidence of it.
+
+**Which sharpens what P1.1 actually is.** The gate catches *no pose anywhere*
+(`detectPhases` returns null below two detected frames). It does not catch
+*poses found, but no swing* — the 2026-08-17 nothing-clip had `pose_coverage`
+0.61 and sailed through to a full fault report. Two different negatives, one
+of them handled. Nothing before this said which.
+
+**The serious finding is what happened to the clip.** A hard fail wrote
+**nothing at all**: `_logWriteFailure` only fires when the history write
+breaks, not when a swing is rejected. So the corpus could only ever contain
+clips that passed the gate — which makes the gate's own error rate
+unmeasurable from the data it produces. Ten positives and one negative on
+record, and a golfer had just filmed a negative that the app discarded.
+
+**Fixed.** `SwingAnalysisException` now carries the measurements taken before
+the rejection — frame series, fps, frame count, pose coverage — and
+`RejectionLog` appends them to `swing_history_rejections.jsonl`, joined to the
+retained clip by `clip_name` and exported with the rest of the corpus. A
+rejected swing is now a corpus record with the same per-frame shape as an
+accepted one, so the scorer reads both with one parser.
+
+Kept in a separate file rather than mixed into `swing_history.jsonl`: these
+records have no faults, no tempo and no phases, and a reader assuming those
+fields would break on them.
+
+**Two bugs the tests caught before the golfer could.** JSON has no NaN, so a
+frame series holding raw NaN cannot be encoded and `record()` would have
+dropped it silently — exactly the empty-frame case this exists to capture.
+Production is safe because `FrameSeries.fromFeatures` maps NaN to null, and the
+test now goes through that path rather than constructing a series production
+never builds. The second was mine: the "unwritable log" test passed a deleted
+directory, which `record()` simply recreates.
+
+**Still open, and unchanged by any of this:** all three localizers invent a
+swing in the 2026-08-17 nothing-clip. Catching an empty frame is not the same
+as knowing whether a person in frame swung, and the gate still cannot tell.
+That needs negatives of the second kind — someone in frame, not swinging — and
+now the app will keep them instead of throwing them away.
+
+#### P1.4 — STANCE-BOUNDED SEARCH PASSES THE NECESSARY CONDITION (2026-08-20)
+
+Every localization failure on record happens **outside the stance**. Filming
+yourself produces walk-in, stance, walk-away; only the stance can contain a
+swing. `stance_bounds()` finds the longest run where the hips do not travel —
+hip displacement over a one-second window, in torso lengths — and
+`locate_swing(..., hip_x=)` searches only inside it.
+
+```
+                    detect_phases   locate_swing   stance_bounded
+video labels (6)         0/6             2/6            6/6
+sheet labels (4)         0/4             0/4            3/4
+nothing-clip          invents         invents        invents
+```
+
+**It works for the mechanism it was built on, not by luck.** The windows it
+finds start after the walk-in and end before the walk-away on all eleven clips
+— 4.0-5.8 s to 10.1-15.6 s — and every labelled swing falls inside. On
+`swing_..._193851.mp4`, the clip that defeated `locate_swing`, the stance
+begins at 4.0 s, which excludes the club being lowered at ~3 s, and the anchor
+moves from 2.97 s to 6.9 s.
+
+**The constant does not carry the result.** `STANCE_TRAVEL_MAX` gives an
+identical answer from **0.25 through 1.5**, a six-fold range; it only degrades
+at 2.0, where the window grows enough to re-admit part of the walk-in. Compare
+`DESCENT_SMOOTH_S`, whose plateau had to be discovered after the fact.
+
+**This is NOT validation, and the reason is written down before anyone quotes
+the 6/6.** All six video-labelled clips are the same golfer doing the same
+routine — one condition measured six times. `locate_swing` scored 2/3 on
+exactly this kind of evidence and then 0/3 on the next three identical swings.
+**A number that looks like this has already fooled this project once.** What
+6/6 buys is the *necessary* condition stated in advance: a stance-bounded
+search that could not find these six would have been dead on arrival. It
+cleared that bar and nothing more.
+
+**What would validate it:** clips where the routine varies — club already down
+during the walk-in, a pause after settling, a practice swing before the real
+one. Different setups are the whole point, since the bound's claim is about
+separating setup from swing.
+
+**One label is now suspect, in the detector's favour.** On `07:55:17` the
+stance-bounded anchor lands at 11.4 s against a label of 9.0 s, scored as the
+single sheet-label miss. But the per-second readout of that clip puts its
+excursion at s11-s12, so the *label* is probably wrong: the golfer gave "8-10
+seconds" as one range for four clips, and that one swing came later. Recorded
+rather than corrected — changing a label because a detector disagrees with it
+is how ground truth stops being ground truth.
+
+**Not shipped, and still not reachable from the app.** `hip_x` is opt-in, the
+app passes neither `torso` nor `hip_x`, and behaviour is unchanged. **No Dart
+port**, deliberately: porting an unvalidated localizer would put it one call
+site away from a golfer.
+
+**P1.1 is untouched by this.** The stance-bounded search still invents a swing
+in the nothing-clip (takeaway 3.5 s, top 3.7 s, impact 4.1 s, finish 4.6 s) —
+better-placed nonsense, but nonsense. All three localizers invent one. Finding
+the swing and knowing whether there *is* one are separate problems, and no
+amount of work on the first will close the second.
+
+**RESULT: THE PREDICTION FAILED, AND `locate_swing` IS DEAD (2026-08-20).**
+Three more same-routine swings, labelled from video at ~7 s. Predicted
+`detect_phases` 0/3 and `locate_swing` 2/3. Outcome:
+
+```
+clip                        detect_phases   locate_swing   swing is at
+swing_20260820_171840.mp4      top 0.47s      top 2.07s     ~8-9s
+swing_20260820_171911.mp4      top 0.13s      top 4.04s     ~8-9s
+swing_20260820_171938.mp4      top 0.30s      top 0.00s     ~8-9s
+```
+
+`detect_phases` 0/3 as predicted. **`locate_swing` scored 0/3, not 2/3.**
+
+**The earlier 2/3 was noise.** Same golfer, same routine, same camera, same
+constants — 2/3 one evening and 0/3 the next. A heuristic whose score moves
+that far between identical conditions is not a heuristic that half-works; it is
+one with no stable signal that got lucky twice. Running totals:
+
+```
+                   video labels   sheet labels   all
+detect_phases          0/6            0/4        0/10
+locate_swing           2/6            0/4        2/10
+```
+
+**Both localizations are now refuted by measurement**, not by argument. This is
+the outcome the "NOT VALIDATED, NOT USED BY THE APP" guard on `locate_swing`
+existed for: it was never enabled, so nothing shipped on the strength of a
+number that turned out to be luck.
+
+**The competing-descent story survives.** The three failures anchor at 2.07 s,
+4.04 s and 0.00 s — all in the walk-in, none in the swing. The pre-registered
+"what would change the plan" case was a failure *outside* the walk-in, and it
+did not happen. So "the walk-in out-descends the swing" still explains every
+failure on record.
+
+**The signal itself is not the problem, and that is the useful part.** Across
+all six 2026-08-19/20 clips the golfer's routine is strikingly consistent: the
+address period sits flat at **0.04-0.15** torso-lengths for three to four
+seconds, then the swing rises to **1.10-1.25** and drops away, always at s8-s9.
+A human reads it instantly. Both detectors fail not because the swing is
+ambiguous but because they search the entire clip, including a walk-in whose
+pose garbage spikes as high as 2.26 torso-lengths.
+
+That is a strong argument for bounding the search to the settled address rather
+than for a better descent metric — and it is still only an argument. Six clips
+of one routine cannot validate the bound, exactly as pre-registered. What they
+can now do is act as a **necessary condition**: a settle-bounded search that
+cannot find these six is dead on arrival.
+
+**PRE-REGISTERED PREDICTION, written before the data arrived (2026-08-20).**
+Three more swings were recorded with the same routine as the 2026-08-19 set and
+labelled from video at ~7 s. Recording the expectation first, because every
+wrong call in this section so far was rationalised after the fact:
+
+  * `detect_phases`: **0/3**. It has missed 7/7 labelled and 8/8 unlabelled;
+    a hit here would mean something about the clip changed, not the detector.
+  * `locate_swing`: **2/3**, matching the previous same-routine set. Anything
+    from 1 to 3 is inside what three samples can produce, so 3/3 would NOT be
+    evidence it works, and 1/3 would not be evidence it got worse.
+  * The failure, if there is one, lands in the **walk-in around 3 s**, where
+    lowering the club into address out-descends the downswing (-12.9 against
+    -8.9 torso-lengths/s on `swing_..._193851.mp4`).
+
+**What would actually change the plan:** a failure that is NOT in the walk-in.
+That would mean the competing-descent story is incomplete, and "search after
+address onset" — the last idea standing — is not the fix either.
+
+**What this cannot settle**, no matter how it comes out: whether the address
+bound works, since none of these six clips vary the routine. Six samples of one
+routine is one condition measured six times.
+
+**`locate_swing` IS NOT "DEMONSTRABLY BETTER". MEASURED 2026-08-20.** The
+paragraph above claims it "puts the events *inside* the swing on all five
+recordings instead of at frame 1". That claim was made by looking at plots.
+With all eight clips labelled it is **false**:
+
+```
+                         detect_phases   locate_swing   label      basis
+07:12:22  (nothing)       invents one     invents one    no swing   video
+07:51:50                    top 0.03s      top  4.80s    ~9.0s      sheet
+07:53:41                    top 0.50s      top 13.78s    ~9.0s      sheet
+07:54:23                    top 4.34s      top 15.82s    ~9.0s      sheet
+07:55:17                    top 0.20s      top 11.38s    ~9.0s      sheet
+193824                      top 0.47s      top  6.84s    ~7.0s      video
+193851                      top 0.17s      top  2.97s    ~7.0s      video
+193916                      top 0.30s      top  8.44s    ~7.0s      video
+--------------------------------------------------------------------------
+found the swing (video labels)   0/3            2/3
+found the swing (sheet labels)   0/4            0/4
+```
+
+**Two out of seven.** On the 2026-08-17 clips it misses by -4.2, +4.8, +6.8 and
++2.4 seconds — a scatter on both sides, which is worse than a consistent bias
+because there is no offset to correct. The "inside the swing on all five"
+reading was eyeball assessment of unlabelled data, which is the exact failure
+mode P0.4 exists to record and this project keeps rediscovering: **a claim
+checked against the same intuition that produced it is not checked.**
+
+It remains better than `detect_phases`, which is 0/7 and also invents a swing
+in the nothing-clip. That is a low bar and not an argument for shipping.
+
+**Both detectors fail the P1.1 negative.** On the clip containing no swing at
+all, `detect_phases` reports takeaway 0.0s / top 0.1s / impact 2.1s / finish
+4.6s and `locate_swing` reports 0.0 / 1.2 / 2.1 / 2.4. Neither declines. The
+hard-fail gate shipped in the app is a presence check on phase *ordering*, and
+both of these produce well-ordered phases, so it does not catch either. P1.1 is
+open, and swapping localizers will not close it.
+
+**Label quality, stated so it is not overread.** The four 2026-08-17 labels are
+`basis: sheet` and worse than that: the golfer first read "around 6-7 seconds",
+then revised to "8-10 seconds into each" after being shown a per-second readout
+of wrist height that I produced. **The revision followed my own analysis of the
+same series, so the label is partly mine.** It is strong enough to confirm a
+four-to-seven-second miss and far too weak to adjudicate anything finer. The
+three 2026-08-19 labels are `basis: video` and carry no such problem.
+
+**TWO hypotheses tried and refuted, recorded so they are not retried.**
+
+*First:* the jump sits four frames after a 0.53 s pose gap (frames 85-87), so
+refuse to compute the descent rate across interpolated frames — mask any rate
+whose smoothing window touches an untracked frame. **Does not work.** With
+`DESCENT_SMOOTH_S` at 0.10 s the window is three frames wide and frames 90-92
+are all tracked, so the mask never sees the artifact. (The same masking did
+move two *unlabelled* 2026-08-17 clips from the end toward the middle, 13.78s
+-> 9.08s and 15.82s -> 9.81s, which looks like an improvement and cannot be
+called one without labels.)
+
+*Second — and this one retracts a claim made earlier in this same section:*
+reject per-frame jumps far outside the clip's own distribution. **Also does not
+work, and the reason matters more than the fix.** A 3-frame median filter — the
+smallest window that can remove a one-frame outlier at all — barely moves the
+descent rate at the false anchor, from **-12.92 to -12.35** torso-lengths/s,
+still beating the real swing's **-8.94**. The anchor survives at 2.97 s.
+
+The drop is a **step, not a spike**: frames 92, 93 and 94 are all low
+(+0.21, +0.29, +0.20) after +1.13 at frame 91. A median cannot remove it
+because there is nothing transient to remove.
+
+**What is actually happening, from the golfer (2026-08-20): "around 3 seconds
+in I am walking with the club into position."** The wrist sits ~1.1
+torso-lengths above the hips because the club is being carried, and then it
+comes down into address. **That descent genuinely out-runs the downswing** —
+-12.9 against -8.9 torso-lengths/s — so this is not a tracking artifact to be
+filtered away. Setting up to hit the ball is a faster normalized wrist descent
+than hitting it.
+
+**So the anchor is wrong, not the data.** "Fastest descent" is not sufficient,
+and no amount of cleaning will make it sufficient, because the competing event
+is real. This is the same wall the earlier note hit from the other side —
+"practice swings, waggles and setting down the club all produce drops
+comparable to the swing" — now with a measured example and a golfer's account
+of what the motion was.
+
+**Where that points.** The swing is not merely a fast descent; it is a fast
+descent *out of a settled address*. The body-speed structure sketched above
+already separates `walk in | settle+swing | walk back`, and bounding the search
+to after the golfer settles is exactly what `detect_address_onset()` (P0.2) is
+for. That makes P1.4 and P0.2 one problem rather than two — which is a change
+in the plan, not a detail, and should be decided deliberately rather than
+drifted into.
+
 **What unblocks this: labels, and they are cheap.** Noting the second at which
 each swing happens converts every question above from taste into measurement.
 Without it, any localizer is tuned to look right. The natural product form is a
@@ -725,6 +1138,56 @@ and correctly says so.
 Clips travel by the Files app, **not** the corpus export — the share sheet
 carries the measurements, and putting hundreds of megabytes of video through it
 would break the one path P0.1 depends on.
+
+**The Files route did not reach the golfer, and a share route was added
+(2026-08-19).** The app correctly reported "3 recordings, 18 MB" — read
+straight off the directory — while the folder could not be found in Files at
+all. Note the corpus file `swing_history.jsonl` sits at the top level of the
+same Documents directory, so this is not about clips being in a subfolder: the
+app's folder itself is not appearing under On My iPhone. `UIFileSharingEnabled`
+and `LSSupportsOpeningDocumentsInPlace` are verifiably in the shipped plist
+(the patcher asserts them after writing), and `getApplicationDocumentsDirectory()`
+verifiably maps to `NSDocumentDirectory` (checked in
+`path_provider_foundation_real.dart`), so the cause is on the iOS side —
+provider-list caching or navigation — not in anything the app controls.
+
+Rather than keep guessing at the Files browser across round trips, `Profile >
+Saved videos` now lists each clip and shares it through the same sheet the
+corpus export uses. **The useful destination is "Save Video", which puts the
+clip in Photos** — where there is a frame-accurate scrubber. Labelling a swing
+means reading times off a scrubber, so Photos is a better answer than Files
+was, not merely a workaround for it.
+
+Files is kept as the second path, not removed. Two independent routes off the
+device is the same lesson P1.2 taught: the share sheet cost four builds to
+platform quirks, and the fallback is what made it recoverable.
+
+**Retention verified on device 2026-08-19 (build 17).** Three swings recorded
+after the update came back carrying `clip_name`
+(`swing_20260819_193824.mp4` and two more), so the clips are on the phone and
+joined to their measurements. Committed as
+`tests/fixtures/device_corpus_2026_08_19.jsonl`.
+
+**The written join earned itself immediately.** The clip is named when the
+recording is retained; the record's `timestamp` is minted when analysis
+finishes. On these three that gap is **8, 8 and 10 seconds** —
+`swing_20260819_193824.mp4` belongs to the record stamped `19:38:32`. Any join
+derived from the timestamp would already be matching swings to the wrong
+videos, silently. This is why the field is written rather than computed.
+
+**The detector is still nowhere near the swing.** On the three new clips,
+against swings that are plainly visible on the sheets at ~6.2-7.5 s, ~7 s and
+~8-9.5 s:
+
+```
+clip                        takeaway   top    impact   finish   length
+swing_20260819_193824.mp4     0.0 s   0.4 s   0.7 s   12.1 s   12.6 s
+swing_20260819_193851.mp4     0.1 s   0.1 s  11.3 s   11.8 s   12.4 s
+swing_20260819_193916.mp4     0.0 s   0.2 s   1.9 s   13.4 s   13.9 s
+```
+
+Eight recordings now, and `detect_phases` has anchored in the walk-in on every
+single one. P1.3 is not an edge case.
 
 **They can still be labelled, from the data instead of the video.**
 `validation/device_corpus/label_sheet.py` renders one sheet per recording from

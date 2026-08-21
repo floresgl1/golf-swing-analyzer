@@ -4,6 +4,7 @@ import '../analysis/swing_history.dart';
 import '../analysis/swing_phases.dart';
 import '../analysis/swing_history_store.dart';
 import '../models/swing_analysis.dart';
+import 'theme/app_theme.dart';
 import 'widgets/drill_tile.dart';
 import 'widgets/fault_card.dart';
 import 'widgets/swing_comparison_view.dart';
@@ -68,7 +69,7 @@ class ReportScreen extends StatelessWidget {
           if (!analysis.anyFlagged) const _CleanSwingBanner(),
           if (comparison != null)
             SwingComparisonView(comparison: comparison),
-          const SizedBox(height: 24),
+          Gap.lg,
         ],
       ),
     );
@@ -90,7 +91,7 @@ class _BetaCaveat extends StatelessWidget {
         children: [
           Icon(Icons.science_outlined,
               size: 16, color: theme.colorScheme.outline),
-          const SizedBox(width: 8),
+          Gap.hsm,
           Expanded(
             child: Text(
               'Beta: these measurements are indicative only. The reference '
@@ -125,7 +126,7 @@ class _NotSavedNotice extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(Icons.save_outlined, size: 18, color: scheme.onErrorContainer),
-            const SizedBox(width: 8),
+            Gap.hsm,
             Expanded(
               child: Text(
                 'This swing could not be saved to your swing history. The '
@@ -158,7 +159,7 @@ class _TempoSummary extends StatelessWidget {
           children: [
             Text('Swing tempo',
                 style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
+            Gap.sm,
             if (tempo == null)
               const Text('Tempo unavailable.')
             else ...[
@@ -166,11 +167,11 @@ class _TempoSummary extends StatelessWidget {
                   '(${tempo.backswingFrames} frames)'),
               Text('Downswing: ${tempo.downswingSeconds.toStringAsFixed(2)}s '
                   '(${tempo.downswingFrames} frames)'),
-              const SizedBox(height: 4),
+              Gap.xs,
               Text(
                 'Ratio ${tempo.ratio.isFinite ? tempo.ratio.toStringAsFixed(1) : '—'} : 1',
               ),
-              const SizedBox(height: 4),
+              Gap.xs,
               // The "tour average ~3 : 1" benchmark used to sit next to this
               // number, inviting a comparison the capture rate cannot support.
               // The downswing is roughly a quarter of a second: at this phone's
@@ -184,7 +185,7 @@ class _TempoSummary extends StatelessWidget {
                     ),
               ),
             ],
-            const SizedBox(height: 8),
+            Gap.sm,
             Text(
               '${analysis.frameCount} frames @ ${analysis.fps.toStringAsFixed(0)} fps',
               style: Theme.of(context).textTheme.bodySmall,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/swing_analysis.dart';
+import '../theme/app_theme.dart';
 
 /// A single fault measurement: a status chip, the measured detail, and (when
 /// flagged) the drills that target it nested beneath it.
@@ -33,7 +34,8 @@ class FaultCard extends StatelessWidget {
     // as an all-clear, and the false-negative rate is exactly as unmeasured as
     // the false-positive one — "we did not see this" is all the thresholds can
     // support, in either direction.
-    final statusColor = flagged ? Colors.amber.shade800 : scheme.outline;
+    final swingColors = SwingColors.of(context);
+    final statusColor = flagged ? swingColors.flagged : swingColors.notSeen;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -63,7 +65,7 @@ class FaultCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              Gap.sm,
             ],
             Row(
               children: [
@@ -71,7 +73,7 @@ class FaultCard extends StatelessWidget {
                   flagged ? Icons.info_outline : Icons.remove_circle_outline,
                   color: statusColor,
                 ),
-                const SizedBox(width: 8),
+                Gap.hsm,
                 Expanded(
                   child: Text(
                     verdict.tentativeLabel,
@@ -96,14 +98,14 @@ class FaultCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            Gap.sm,
             Text(verdict.detail,
                 style: Theme.of(context).textTheme.bodyMedium),
             if (drills.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text('Drills that target this',
                   style: Theme.of(context).textTheme.labelLarge),
-              const SizedBox(height: 4),
+              Gap.xs,
               ...drills,
             ],
           ],

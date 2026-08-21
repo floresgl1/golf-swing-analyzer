@@ -90,6 +90,17 @@ IMPACT_SEARCH_S = 1.0      # look forward from the top for impact
 TAKEAWAY_SEARCH_S = 2.0    # look back from the top for the takeaway
 FINISH_SEARCH_S = 1.5      # look forward from impact for the finish
 
+# How far the hips may travel, in torso lengths, over a one-second window and
+# still count as standing still. This bounds the swing search to the stance --
+# see `stance_bounds`. It is normalised by torso length, so it does not depend
+# on the golfer's distance from the camera or the video's resolution.
+#
+# Measured, not chosen by eye: the result is IDENTICAL from 0.25 through 1.5,
+# a six-fold range, on the six video-labelled swings. 0.4 sits in the middle of
+# that plateau. It only starts to matter at 2.0, where the window grows enough
+# to swallow part of the walk-in again.
+STANCE_TRAVEL_MAX = 0.4
+
 
 def frames_for(seconds, fps, minimum=1, odd=False):
     """Convert a duration in seconds to a frame count at the given fps.
@@ -140,7 +151,8 @@ def _moving_average(a, w):
     return np.convolve(padded, kernel, mode='valid')[:len(a)]
 
 
-def detect_phases(wrist_y, fps=BASELINE_FPS, smooth=None, torso=None):
+def detect_phases(wrist_y, fps=BASELINE_FPS, smooth=None, torso=None,
+                  hip_x=None):
     """Locate the key swing events from the lead-wrist vertical trajectory.
 
     Works on wrist *height* (1 - y, so up is positive), which rises through the
@@ -151,14 +163,26 @@ def detect_phases(wrist_y, fps=BASELINE_FPS, smooth=None, torso=None):
     frame count at `fps`; at BASELINE_FPS this is the historic smooth=5. Pass an
     explicit `smooth` to override the frame count directly.
     """
-    # Opt-in, because it needs a signal the historic call sites do not pass.
-    # Without `torso` the original peak-based localization runs unchanged, which
-    # is what the calibration clip and the existing tests exercise; with it, a
-    # real phone clip gets an anchor that survives a walk-in. See locate_swing.
+    # Opt-in, because it needs signals the historic call sites do not pass.
+    # Without `torso` the original peak-based localization runs unchanged,
+    # which is what the calibration clip and the existing tests exercise.
+    #
+    # `hip_x` additionally bounds the search to the stance, and it is the only
+    # form with any measured support: against labels, peak localization scores
+    # 0/10, descent-anchored-over-the-whole-clip 2/10, and stance-bounded 9/10.
+    # See locate_swing and P1.4 in ROADMAP.md.
     if torso is not None:
-        located = locate_swing(wrist_y, torso, fps)
+        located = locate_swing(wrist_y, torso, fps, hip_x=hip_x)
         if located is not None:
             return located
+        # When the caller asked for stance bounding and no stance was found,
+        # that is an ANSWER, not a gap to paper over. Falling through to peak
+        # localization here would replace "the golfer never stood still, so
+        # there is no swing to locate" with a guess from a method measured at
+        # 0/10 -- and it did exactly that on a no-swing clip of 2026-08-20,
+        # turning a usable decline into an invented swing at 0.2s.
+        if hip_x is not None:
+            return None
 
     if smooth is None:
         smooth = frames_for(SMOOTH_WINDOW_S, fps, odd=True)
@@ -242,7 +266,55 @@ def implausible_swing(phases):
 
 
 
-def locate_swing(wrist_y, torso, fps):
+def stance_bounds(hip_x, torso, fps, travel_max=STANCE_TRAVEL_MAX):
+    """Frame range over which the golfer is standing still, or None.
+
+    Filming yourself means the clip contains a walk-in, a stance, and a walk
+    away. Only the stance can contain a swing, and everything that has gone
+    wrong with localization so far has gone wrong outside it: `detect_phases`
+    anchors on walk-in pose garbage (0/10 against labels), and `locate_swing`
+    anchors on the club being lowered into address, which out-descends the
+    downswing itself (2/10). See P1.4 in ROADMAP.md.
+
+    Standing still is measured as hip travel over a one-second window, in torso
+    lengths. Returns the longest such run as a (lo, hi) frame range.
+    """
+    hip_x = np.asarray(hip_x, float)
+    torso = np.asarray(torso, float)
+    n = len(hip_x)
+    if n == 0:
+        return None
+
+    tracked = np.isfinite(hip_x) & np.isfinite(torso)
+    if tracked.sum() < 3:
+        return None
+
+    win = frames_for(1.0, fps)
+    still = np.zeros(n, dtype=bool)
+    for i in range(n):
+        lo, hi = max(0, i - win // 2), min(n, i + win // 2 + 1)
+        seg = hip_x[lo:hi][tracked[lo:hi]]
+        scale = torso[lo:hi][tracked[lo:hi]]
+        if len(seg) < 3:
+            continue
+        still[i] = (seg.max() - seg.min()) / max(np.median(scale), 1e-6) < travel_max
+
+    best = None
+    i = 0
+    while i < n:
+        if still[i]:
+            j = i
+            while j < n and still[j]:
+                j += 1
+            if best is None or j - i > best[1] - best[0]:
+                best = (i, j)
+            i = j
+        else:
+            i += 1
+    return best
+
+
+def locate_swing(wrist_y, torso, fps, hip_x=None):
     """Locate the four swing events by anchoring on the downswing.
 
     *** NOT VALIDATED. NOT USED BY THE APP. DO NOT ENABLE WITHOUT READING
@@ -296,13 +368,23 @@ def locate_swing(wrist_y, torso, fps):
     rate[1:] = np.diff(height) / t[1:] * fps
     rate = _moving_average(rate, w)
 
-    steepest = int(np.argmin(rate))
+    # Bound the search to the stance when the hips are available. Without it
+    # this is the localization measured at 2/10 -- kept reachable so the
+    # comparison stays runnable, not because it is worth using.
+    lo_b, hi_b = 0, n
+    if hip_x is not None:
+        bounds = stance_bounds(hip_x, t, fps)
+        if bounds is None or bounds[1] - bounds[0] < frames_for(1.0, fps):
+            return None
+        lo_b, hi_b = bounds
+
+    steepest = lo_b + int(np.argmin(rate[lo_b:hi_b]))
 
     def _back(frm, seconds):
-        return max(0, frm - frames_for(seconds, fps))
+        return max(lo_b, frm - frames_for(seconds, fps))
 
     def _fwd(frm, seconds):
-        return min(n, frm + frames_for(seconds, fps) + 1)
+        return min(hi_b, frm + frames_for(seconds, fps) + 1)
 
     lo = _back(steepest, TOP_SEARCH_S)
     top = lo + int(np.argmax(height[lo:steepest + 1]))

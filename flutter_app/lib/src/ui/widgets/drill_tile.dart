@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/drill.dart';
+import '../theme/app_theme.dart';
 
 /// One recommended drill: name + difficulty badge, optional equipment line, and
 /// the how-to description.
@@ -10,13 +11,14 @@ class DrillTile extends StatelessWidget {
   final Drill drill;
 
   Color _difficultyColor(BuildContext context) {
+    final sc = SwingColors.of(context);
     switch (drill.difficulty) {
       case 'beginner':
-        return Colors.green.shade600;
+        return sc.drillBeginner;
       case 'intermediate':
-        return Colors.orange.shade700;
+        return sc.drillIntermediate;
       case 'advanced':
-        return Colors.red.shade600;
+        return sc.drillAdvanced;
       default:
         return Theme.of(context).colorScheme.outline;
     }
@@ -65,7 +67,7 @@ class DrillTile extends StatelessWidget {
                     ),
               ),
             ),
-          const SizedBox(height: 4),
+          Gap.xs,
           Text(drill.description,
               style: Theme.of(context).textTheme.bodySmall),
         ],
