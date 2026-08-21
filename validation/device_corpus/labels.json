@@ -12,9 +12,7 @@
       "takeaway_s": null,
       "top_s": null,
       "impact_s": null,
-      "finish_s": null,
-      "no_swing": true,
-      "swing_start_source": "golfer, at the time of recording: 'i just took a random video of nothing'. Confirmed by the sheet -- flat at ~0.8 torso-lengths for all 5.6s, no excursion anywhere. A scored NEGATIVE for the P1.1 gate. (2026-08-17 / 2026-08-20)"
+      "finish_s": null
     },
     {
       "timestamp": "2026-08-17T07:51:50-07:00",
@@ -27,8 +25,7 @@
       "takeaway_s": null,
       "top_s": null,
       "impact_s": null,
-      "finish_s": null,
-      "swing_start_source": "golfer, reading the trajectory sheet: first said 'around 6-7 seconds', then revised to '8-10 seconds into each' after being shown a per-second readout of wrist height. NOT INDEPENDENT: the revision followed my own analysis of the same series, so this label is partly mine. Good enough to confirm a multi-second miss; not good enough to adjudicate anything finer. (2026-08-20)"
+      "finish_s": null
     },
     {
       "timestamp": "2026-08-17T07:53:41-07:00",
@@ -41,8 +38,7 @@
       "takeaway_s": null,
       "top_s": null,
       "impact_s": null,
-      "finish_s": null,
-      "swing_start_source": "golfer, reading the trajectory sheet: first said 'around 6-7 seconds', then revised to '8-10 seconds into each' after being shown a per-second readout of wrist height. NOT INDEPENDENT: the revision followed my own analysis of the same series, so this label is partly mine. Good enough to confirm a multi-second miss; not good enough to adjudicate anything finer. (2026-08-20)"
+      "finish_s": null
     },
     {
       "timestamp": "2026-08-17T07:54:23-07:00",
@@ -55,8 +51,7 @@
       "takeaway_s": null,
       "top_s": null,
       "impact_s": null,
-      "finish_s": null,
-      "swing_start_source": "golfer, reading the trajectory sheet: first said 'around 6-7 seconds', then revised to '8-10 seconds into each' after being shown a per-second readout of wrist height. NOT INDEPENDENT: the revision followed my own analysis of the same series, so this label is partly mine. Good enough to confirm a multi-second miss; not good enough to adjudicate anything finer. (2026-08-20)"
+      "finish_s": null
     },
     {
       "timestamp": "2026-08-17T07:55:17-07:00",
@@ -69,8 +64,7 @@
       "takeaway_s": null,
       "top_s": null,
       "impact_s": null,
-      "finish_s": null,
-      "swing_start_source": "golfer, reading the trajectory sheet: first said 'around 6-7 seconds', then revised to '8-10 seconds into each' after being shown a per-second readout of wrist height. NOT INDEPENDENT: the revision followed my own analysis of the same series, so this label is partly mine. Good enough to confirm a multi-second miss; not good enough to adjudicate anything finer. (2026-08-20)"
+      "finish_s": null
     },
     {
       "timestamp": "2026-08-19T19:38:32-07:00",
@@ -110,7 +104,48 @@
       "top_s": null,
       "impact_s": null,
       "finish_s": null
+    },
+    {
+      "timestamp": "2026-08-20T17:18:49-07:00",
+      "clip_name": "swing_20260820_171840.mp4",
+      "sheet": "sheets/swing_20260820_171840.png",
+      "frame_count": 421,
+      "fps": 29.97002997002997,
+      "label_basis": "video",
+      "swing_start_s": 7.0,
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "swing_start_source": "golfer, watching the clips: 'all with the swing starting around 7 seconds', same routine as the 2026-08-19 set (2026-08-20)"
+    },
+    {
+      "timestamp": "2026-08-20T17:19:20-07:00",
+      "clip_name": "swing_20260820_171911.mp4",
+      "sheet": "sheets/swing_20260820_171911.png",
+      "frame_count": 419,
+      "fps": 29.97002997002997,
+      "label_basis": "video",
+      "swing_start_s": 7.0,
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "swing_start_source": "golfer, watching the clips: 'all with the swing starting around 7 seconds', same routine as the 2026-08-19 set (2026-08-20)"
+    },
+    {
+      "timestamp": "2026-08-20T17:19:48-07:00",
+      "clip_name": "swing_20260820_171938.mp4",
+      "sheet": "sheets/swing_20260820_171938.png",
+      "frame_count": 430,
+      "fps": 29.97002997002997,
+      "label_basis": "video",
+      "swing_start_s": 7.0,
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "swing_start_source": "golfer, watching the clips: 'all with the swing starting around 7 seconds', same routine as the 2026-08-19 set (2026-08-20)"
     }
-  ],
-  "negative_note": "`no_swing: true` marks a clip that contains no swing at all. A detector that reports phases here is not merely imprecise, it is inventing a swing -- which is the P1.1 defect: the app produced a full fault report with drills for a video of nothing."
+  ]
 }
