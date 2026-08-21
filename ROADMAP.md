@@ -774,12 +774,38 @@ caller who opts into stance bounding is asking a question whose answer may be
 "there is no stance"; swallowing that answer to produce a guess is strictly
 worse than returning it.
 
-**What the practice-swing clip did to the stance bound.** Clip 3 holds two
+**The practice swing beats the stance bound, as predicted.** Clip 3 holds two
 excursions, ~8 s and ~13-14 s, and the stance (5.2-16.1 s) contains both. The
-stance-bounded search picked the first. This was predicted before the clip
-existed: a stance bound cannot separate two swings that both happen while the
-golfer is standing still. Which of the two was the practice swing is not yet
-recorded, and the result is not interpretable until it is.
+golfer confirms **the first is the practice swing**; the real one is the second.
+The stance-bounded search anchors at 8.01 s — **five seconds early, on the
+practice swing.**
+
+This was predicted before the clip was filmed, which is the only reason it is
+worth anything: a stance bound cannot separate two swings that both happen
+while the golfer is standing still. It is now measured rather than argued.
+
+**Why this distractor is different in kind from the others.** Every failure
+before it came from something that was not a swing — pose garbage in the
+walk-in, a club being lowered into address. Those can, in principle, be
+cleaned away. A practice swing **is a swing**: it happens inside the stance, it
+has the correct shape, the correct duration, the correct descent rate. No
+amount of signal processing distinguishes it, because there is nothing wrong
+with it. Only something that knows *which swing the golfer meant* can choose.
+
+That is a product problem wearing a signal-processing costume, and it points
+at the scrubber ("was this the swing?") already sketched under P1.4 — or at
+the simpler answer of taking the LAST qualifying swing in the stance, on the
+grounds that a golfer practices and then hits. **The last-swing rule is a
+guess with one supporting clip, and it is not being implemented on that.**
+
+Running totals with clip 3 labelled to the real swing:
+
+```
+                    video labels   sheet labels
+detect_phases           0/7            0/4
+locate_swing            2/7            0/4
+stance_bounded          6/7            3/4
+```
 
 #### P1.1 — THE GATE WORKS ON AN EMPTY FRAME, AND THE APP WAS BINNING THE EVIDENCE (2026-08-20)
 
