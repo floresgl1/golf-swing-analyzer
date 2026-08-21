@@ -4,6 +4,7 @@ import '../analysis/participant.dart';
 import '../analysis/swing_history.dart';
 import '../services/clip_store.dart';
 import '../services/corpus_export.dart';
+import 'theme/app_theme.dart';
 
 /// The golfer's own record: their anonymous id, what a coach has told them
 /// about their swing, and the button that gets their swings off the device.
@@ -340,7 +341,7 @@ class _CoachReportRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(height: 4),
+          Gap.xs,
           SegmentedButton<CoachConfirmation>(
             segments: const [
               ButtonSegment(value: CoachConfirmation.yes, label: Text('Yes')),

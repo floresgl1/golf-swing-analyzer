@@ -6,6 +6,7 @@ import '../analysis/swing_history.dart';
 import '../models/drill.dart';
 import 'analyzing_screen.dart';
 import 'profile_screen.dart';
+import 'theme/app_theme.dart';
 
 /// First screen: preview the camera and record a swing. When recording stops,
 /// hands the video file off to the analysis screen ("record then analyze").
@@ -197,7 +198,9 @@ class _RecordScreenState extends State<RecordScreen> {
           ? null
           : FloatingActionButton.extended(
               onPressed: _toggleRecording,
-              backgroundColor: _isRecording ? Colors.red : null,
+              backgroundColor: _isRecording
+                  ? SwingColors.of(context).drillAdvanced
+                  : null,
               icon: Icon(_isRecording ? Icons.stop : Icons.fiber_manual_record),
               label: Text(_isRecording ? 'Stop & analyze' : 'Record'),
             ),
@@ -249,31 +252,34 @@ class _CameraPreviewWithHint extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'Frame your whole body, down-the-line. Record one full swing, '
-                  'then tap stop to analyze.',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-              const SizedBox(height: 8),
+              Builder(builder: (context) {
+                final sc = SwingColors.of(context);
+                return Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: sc.scrim,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Frame your whole body, down-the-line. Record one full swing, '
+                    'then tap stop to analyze.',
+                    style: TextStyle(color: sc.onScrim),
+                  ),
+                );
+              }),
+              Gap.sm,
               _HandednessSelector(
                 value: handedness,
                 onChanged: onHandednessChanged,
               ),
-              const SizedBox(height: 8),
+              Gap.sm,
               _SwingKindSelector(
                 value: swingKind,
                 onChanged: onSwingKindChanged,
                 calibrationFault: calibrationFault,
                 onCalibrationFaultChanged: onCalibrationFaultChanged,
               ),
-              const SizedBox(height: 8),
+              Gap.sm,
               _TargetSelector(
                 value: targeting,
                 onChanged: onTargetingChanged,
@@ -307,10 +313,11 @@ class _SwingKindSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sc = SwingColors.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black54,
+        color: sc.scrim,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -318,11 +325,10 @@ class _SwingKindSelector extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.science_outlined,
-                  color: Colors.white, size: 18),
-              const SizedBox(width: 8),
-              const Text('This swing is',
-                  style: TextStyle(color: Colors.white70)),
+              Icon(Icons.science_outlined, color: sc.onScrim, size: 18),
+              Gap.hsm,
+              Text('This swing is',
+                  style: TextStyle(color: sc.onScrim.withValues(alpha: 0.7))),
               const SizedBox(width: 12),
               Expanded(
                 child: SegmentedButton<SwingKind>(
@@ -343,21 +349,23 @@ class _SwingKindSelector extends StatelessWidget {
             ],
           ),
           if (value == SwingKind.calibration) ...[
-            const SizedBox(height: 4),
+            Gap.xs,
             Row(
               children: [
                 const SizedBox(width: 26),
-                const Text('Exaggerating',
-                    style: TextStyle(color: Colors.white70)),
+                Text('Exaggerating',
+                    style: TextStyle(color: sc.onScrim.withValues(alpha: 0.7))),
                 const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: calibrationFault,
                       isExpanded: true,
-                      dropdownColor: Colors.black87,
-                      iconEnabledColor: Colors.white,
-                      style: const TextStyle(color: Colors.white),
+                      dropdownColor: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
+                      iconEnabledColor: sc.onScrim,
+                      style: TextStyle(color: sc.onScrim),
                       onChanged: onCalibrationFaultChanged == null
                           ? null
                           : (v) {
@@ -395,17 +403,19 @@ class _HandednessSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sc = SwingColors.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black54,
+        color: sc.scrim,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
-          const Icon(Icons.sports_golf, color: Colors.white, size: 18),
-          const SizedBox(width: 8),
-          const Text('I swing', style: TextStyle(color: Colors.white70)),
+          Icon(Icons.sports_golf, color: sc.onScrim, size: 18),
+          Gap.hsm,
+          Text('I swing',
+              style: TextStyle(color: sc.onScrim.withValues(alpha: 0.7))),
           const SizedBox(width: 12),
           Expanded(
             child: SegmentedButton<Handedness>(
@@ -442,26 +452,29 @@ class _TargetSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sc = SwingColors.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.black54,
+        color: sc.scrim,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
-          const Icon(Icons.center_focus_strong, color: Colors.white, size: 18),
-          const SizedBox(width: 8),
-          const Text('Working on', style: TextStyle(color: Colors.white70)),
+          Icon(Icons.center_focus_strong, color: sc.onScrim, size: 18),
+          Gap.hsm,
+          Text('Working on',
+              style: TextStyle(color: sc.onScrim.withValues(alpha: 0.7))),
           const SizedBox(width: 12),
           Expanded(
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String?>(
                 value: value,
                 isExpanded: true,
-                dropdownColor: Colors.black87,
-                iconEnabledColor: Colors.white,
-                style: const TextStyle(color: Colors.white),
+                dropdownColor:
+                    Theme.of(context).colorScheme.surfaceContainerHighest,
+                iconEnabledColor: sc.onScrim,
+                style: TextStyle(color: sc.onScrim),
                 onChanged: onChanged,
                 items: [
                   const DropdownMenuItem<String?>(
