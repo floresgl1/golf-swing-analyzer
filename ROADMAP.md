@@ -725,6 +725,77 @@ with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
 read as the fastest descent in the clip. Every clip in the corpus carries a
 few: 3 to 19 jumps over 0.5 torso-lengths each.
 
+**RESULT: THE PREDICTION FAILED, AND `locate_swing` IS DEAD (2026-08-20).**
+Three more same-routine swings, labelled from video at ~7 s. Predicted
+`detect_phases` 0/3 and `locate_swing` 2/3. Outcome:
+
+```
+clip                        detect_phases   locate_swing   swing is at
+swing_20260820_171840.mp4      top 0.47s      top 2.07s     ~8-9s
+swing_20260820_171911.mp4      top 0.13s      top 4.04s     ~8-9s
+swing_20260820_171938.mp4      top 0.30s      top 0.00s     ~8-9s
+```
+
+`detect_phases` 0/3 as predicted. **`locate_swing` scored 0/3, not 2/3.**
+
+**The earlier 2/3 was noise.** Same golfer, same routine, same camera, same
+constants — 2/3 one evening and 0/3 the next. A heuristic whose score moves
+that far between identical conditions is not a heuristic that half-works; it is
+one with no stable signal that got lucky twice. Running totals:
+
+```
+                   video labels   sheet labels   all
+detect_phases          0/6            0/4        0/10
+locate_swing           2/6            0/4        2/10
+```
+
+**Both localizations are now refuted by measurement**, not by argument. This is
+the outcome the "NOT VALIDATED, NOT USED BY THE APP" guard on `locate_swing`
+existed for: it was never enabled, so nothing shipped on the strength of a
+number that turned out to be luck.
+
+**The competing-descent story survives.** The three failures anchor at 2.07 s,
+4.04 s and 0.00 s — all in the walk-in, none in the swing. The pre-registered
+"what would change the plan" case was a failure *outside* the walk-in, and it
+did not happen. So "the walk-in out-descends the swing" still explains every
+failure on record.
+
+**The signal itself is not the problem, and that is the useful part.** Across
+all six 2026-08-19/20 clips the golfer's routine is strikingly consistent: the
+address period sits flat at **0.04-0.15** torso-lengths for three to four
+seconds, then the swing rises to **1.10-1.25** and drops away, always at s8-s9.
+A human reads it instantly. Both detectors fail not because the swing is
+ambiguous but because they search the entire clip, including a walk-in whose
+pose garbage spikes as high as 2.26 torso-lengths.
+
+That is a strong argument for bounding the search to the settled address rather
+than for a better descent metric — and it is still only an argument. Six clips
+of one routine cannot validate the bound, exactly as pre-registered. What they
+can now do is act as a **necessary condition**: a settle-bounded search that
+cannot find these six is dead on arrival.
+
+**PRE-REGISTERED PREDICTION, written before the data arrived (2026-08-20).**
+Three more swings were recorded with the same routine as the 2026-08-19 set and
+labelled from video at ~7 s. Recording the expectation first, because every
+wrong call in this section so far was rationalised after the fact:
+
+  * `detect_phases`: **0/3**. It has missed 7/7 labelled and 8/8 unlabelled;
+    a hit here would mean something about the clip changed, not the detector.
+  * `locate_swing`: **2/3**, matching the previous same-routine set. Anything
+    from 1 to 3 is inside what three samples can produce, so 3/3 would NOT be
+    evidence it works, and 1/3 would not be evidence it got worse.
+  * The failure, if there is one, lands in the **walk-in around 3 s**, where
+    lowering the club into address out-descends the downswing (-12.9 against
+    -8.9 torso-lengths/s on `swing_..._193851.mp4`).
+
+**What would actually change the plan:** a failure that is NOT in the walk-in.
+That would mean the competing-descent story is incomplete, and "search after
+address onset" — the last idea standing — is not the fix either.
+
+**What this cannot settle**, no matter how it comes out: whether the address
+bound works, since none of these six clips vary the routine. Six samples of one
+routine is one condition measured six times.
+
 **`locate_swing` IS NOT "DEMONSTRABLY BETTER". MEASURED 2026-08-20.** The
 paragraph above claims it "puts the events *inside* the swing on all five
 recordings instead of at frame 1". That claim was made by looking at plots.
