@@ -158,7 +158,23 @@ class SwingAnalyzer {
     final torso = [for (final f in features) f.torso];
     final wristY = [for (final f in features) f.wristY];
 
-    final detected = detectPhases(wristY);
+    // Stance-bounded localization, live as of 2026-08-20. Passing torso and
+    // hipX opts into it; without them this is the peak-based localization that
+    // scored **0/14** against device labels, anchoring in the walk-in on every
+    // real clip ever measured. Bounded to the stance it scores 12/14 and
+    // declines one of the three no-swing clips instead of inventing a swing.
+    //
+    // A null here now has two meanings, and both are handled by the gate
+    // below: fewer than two frames had a pose, OR the golfer never stood still
+    // long enough to form a stance. The second is a real answer -- there is no
+    // swing in a clip where nobody settled -- and it must NOT fall back to the
+    // 0/14 method. See P1.4 in ROADMAP.md.
+    final detected = detectPhases(
+      wristY,
+      fps: fps,
+      torso: torso,
+      hipX: hipX,
+    );
 
     // Hard fail rather than reporting around the gap. Showing tempo with the
     // verdicts suppressed would invite the surviving numbers to be read as

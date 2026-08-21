@@ -725,6 +725,81 @@ with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
 read as the fastest descent in the clip. Every clip in the corpus carries a
 few: 3 to 19 jumps over 0.5 torso-lengths each.
 
+#### P1.4 — STANCE-BOUNDED LOCALIZATION IS LIVE IN THE APP (2026-08-20)
+
+Ported to Dart and wired in, on the golfer's decision after being shown that
+the evidence is two routines from one golfer on one phone.
+
+**What changed for a user.** `swing_analyzer.dart` now passes `torso` and
+`hipX` to `detectPhases`. The app previously ran peak localization, which
+scores **0/14** against device labels and anchored in the walk-in on every real
+clip ever measured. It now runs the stance-bounded search: **12/14**, and it
+declines one of the three no-swing clips instead of inventing a swing in it.
+
+**Verified as a port, not a rewrite.** `tests/fixtures/stance_parity_expected.json`
+holds the frame indices Python produces for all 20 committed device clips, and
+`stance_parity_test.dart` requires Dart to reproduce them **exactly**, including
+the clip Python declines. Exact rather than approximate: both sides interpolate
+the same gaps, smooth with the same odd-width kernel and take argmin/argmax over
+the same slices, so a one-frame drift means a helper diverged.
+
+**Verified as non-vacuous.** Six mutations of the Dart port, five caught by the
+corpus alone:
+
+```
+stance travel threshold widened            RED
+descent smoothing changed                  RED
+short-stance guard removed                 RED
+decline falls back to peak localization    RED
+stance bound not applied to the anchor     RED
+framesFor rounds odd DOWN not up           GREEN  <-- blind
+```
+
+The blind one is instructive: **every clip in the corpus is 29.97 fps**, where
+0.10 s rounds to 3 frames — already odd, so the odd-bump never fires. A corpus
+of one frame rate cannot test frame-rate handling. Closed with direct
+`framesFor` tests pinned to Python's values at 240, 60, 30 and 29.97 fps; the
+mutation now goes red. **240 fps is not hypothetical here — it is the rate the
+Dart windows were built for.**
+
+**Three app-level tests pin what a golfer meets**: the never-settled clip is
+rejected, a real swing is still accepted and located inside the swing, and the
+practice-swing clip is accepted *on the wrong swing* — recorded rather than
+hidden.
+
+**The risk that was checked before wiring.** A stricter gate can buy its
+declines by rejecting real swings. On all 14 labelled swings in the corpus the
+stance-bounded path declines **none**, so no false negative was introduced by
+this change. The one intermittent false negative on record predates it.
+
+**What is still not established, unchanged by shipping it:** two routines, one
+golfer, one phone, one camera position, 30 fps. Breadth is what is missing, and
+more swings from the same tester cannot supply it — a second tester would say
+more than another twenty clips from the first.
+
+#### SCOREBOARD (2026-08-20, 20 clips: 17 labelled, 3 negatives)
+
+```
+                    video labels   sheet labels   negatives declined
+detect_phases          0/10            0/4              0/3
+locate_swing           3/10            0/4              0/3
+stance_bounded         9/10            3/4              1/3
+```
+
+The single `stance_bounded` miss under video labels is the practice-swing clip,
+where it anchored on the practice swing rather than the real one. Every other
+video-labelled swing it finds, across two routines.
+
+**What is still not established.** Two routines, one golfer, one phone, one
+camera position, 30 fps. The negatives number three and only one is declined.
+And the practice-swing failure is not a tuning problem — a practice swing is a
+real swing inside the stance, so nothing in the signal separates it.
+
+**Still nothing shipped.** `hip_x` is opt-in, the app passes neither `torso`
+nor `hip_x`, and there is no Dart port. The app's behaviour today is the
+`detect_phases` row: 0/14 on labelled swings, inventing a swing on all three
+negatives.
+
 #### P1.1 — THE GATE IS WRONG IN BOTH DIRECTIONS (2026-08-20)
 
 Six clips were filmed to test it: three varied swing routines and three
@@ -745,6 +820,42 @@ in some ways the worse one: the golfer did everything asked — side-on, whole
 body in frame, camera still — and was told *"that didn't look like a golf
 swing."* Being wrong in both directions at once means the gate is not
 mis-tuned; it is not measuring the thing it claims to measure.
+
+**Clip 1 filmed four more times (2026-08-20 18:50): all four accepted.** The
+false negative has now happened once in six attempts of the same routine and
+has not reproduced. Nothing can be said about what triggers it, and the one
+clip that could have said anything is the one whose data was discarded.
+
+**These four are the first varied-routine data the stance bound has faced.**
+Routine 1 is *walk in with the club already down*, which removes the distractor
+that beat `locate_swing` on 2026-08-19 — there is no club being lowered into
+address, because it was never raised. Stance windows and anchors:
+
+```
+clip                       stance        detect_phases  locate_swing  stance_bounded
+swing_..._185017.mp4     4.8-10.7s          0.1s          12.6s           7.8s
+swing_..._185042.mp4     4.5-10.5s          0.2s          11.4s           7.8s
+swing_..._185108.mp4     5.1-11.1s          0.0s           2.5s           8.5s
+swing_..._185134.mp4     5.0-10.9s          0.0s           7.6s           7.6s
+```
+
+Labelled by the golfer at ~7 s, all four: **`stance_bounded` finds all four,
+`locate_swing` finds one, `detect_phases` none.**
+
+**This is the first evidence for the stance bound that is not one routine
+measured repeatedly.** The six clips it originally cleared were the same
+walk-in-with-the-club-up routine six times; these four are a different setup,
+labelled from video, and it holds. That upgrades the earlier 6/6 from "passed
+a necessary condition" to "held on a routine it was not built against" — which
+is not the same as validated, and the difference is still worth keeping in
+view: two routines by one golfer on one phone.
+
+**Removing one distractor did not rescue the unbounded localizer**, which is
+the interesting part. With no club-lowering to catch, `locate_swing` moved its
+failures to **11.4 s and 12.6 s — the walk-away** instead of the walk-in. There
+is always another competing descent outside the stance; eliminating them one at
+a time is not a strategy, which is the argument for bounding rather than
+cleaning.
 
 **Clip 1 re-filmed 2026-08-20: the same routine was ACCEPTED.** Walk in with
 the club already down, set up, swing — rejected the first time, analyzed
