@@ -20,6 +20,11 @@ every session.
 - **Dart windows are frame counts at 240fps.** Python got the
   duration-based refactor; Dart deliberately did NOT. This divergence is
   HELD and gated on P0.2. Never change one side's constants in isolation.
+  **Exception, added 2026-08-20:** `framesFor`, `stanceBounds` and
+  `locateSwing` in `swing_phases.dart` ARE duration-based. They are ports of
+  Python functions that never had frame-count constants, so being
+  duration-based is what keeps them parallel. `detectPhases`'s own
+  `smooth = 5` is untouched and still held.
 - **`measurement_basis.dart` mirrors window literals** rather than
   importing them (faults.dart was off-limits). Change a window without
   updating the mirror and the basis stamp won't notice.

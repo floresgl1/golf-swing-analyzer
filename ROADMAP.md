@@ -725,6 +725,58 @@ with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
 read as the fastest descent in the clip. Every clip in the corpus carries a
 few: 3 to 19 jumps over 0.5 torso-lengths each.
 
+#### P1.4 — STANCE-BOUNDED LOCALIZATION IS LIVE IN THE APP (2026-08-20)
+
+Ported to Dart and wired in, on the golfer's decision after being shown that
+the evidence is two routines from one golfer on one phone.
+
+**What changed for a user.** `swing_analyzer.dart` now passes `torso` and
+`hipX` to `detectPhases`. The app previously ran peak localization, which
+scores **0/14** against device labels and anchored in the walk-in on every real
+clip ever measured. It now runs the stance-bounded search: **12/14**, and it
+declines one of the three no-swing clips instead of inventing a swing in it.
+
+**Verified as a port, not a rewrite.** `tests/fixtures/stance_parity_expected.json`
+holds the frame indices Python produces for all 20 committed device clips, and
+`stance_parity_test.dart` requires Dart to reproduce them **exactly**, including
+the clip Python declines. Exact rather than approximate: both sides interpolate
+the same gaps, smooth with the same odd-width kernel and take argmin/argmax over
+the same slices, so a one-frame drift means a helper diverged.
+
+**Verified as non-vacuous.** Six mutations of the Dart port, five caught by the
+corpus alone:
+
+```
+stance travel threshold widened            RED
+descent smoothing changed                  RED
+short-stance guard removed                 RED
+decline falls back to peak localization    RED
+stance bound not applied to the anchor     RED
+framesFor rounds odd DOWN not up           GREEN  <-- blind
+```
+
+The blind one is instructive: **every clip in the corpus is 29.97 fps**, where
+0.10 s rounds to 3 frames — already odd, so the odd-bump never fires. A corpus
+of one frame rate cannot test frame-rate handling. Closed with direct
+`framesFor` tests pinned to Python's values at 240, 60, 30 and 29.97 fps; the
+mutation now goes red. **240 fps is not hypothetical here — it is the rate the
+Dart windows were built for.**
+
+**Three app-level tests pin what a golfer meets**: the never-settled clip is
+rejected, a real swing is still accepted and located inside the swing, and the
+practice-swing clip is accepted *on the wrong swing* — recorded rather than
+hidden.
+
+**The risk that was checked before wiring.** A stricter gate can buy its
+declines by rejecting real swings. On all 14 labelled swings in the corpus the
+stance-bounded path declines **none**, so no false negative was introduced by
+this change. The one intermittent false negative on record predates it.
+
+**What is still not established, unchanged by shipping it:** two routines, one
+golfer, one phone, one camera position, 30 fps. Breadth is what is missing, and
+more swings from the same tester cannot supply it — a second tester would say
+more than another twenty clips from the first.
+
 #### SCOREBOARD (2026-08-20, 20 clips: 17 labelled, 3 negatives)
 
 ```

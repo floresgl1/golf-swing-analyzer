@@ -1,0 +1,220 @@
+{
+  "note": "Frame indices produced by src/swing_phases.py's detect_phases(..., torso=, hip_x=) on every committed device clip. The Dart port must reproduce these EXACTLY. Regenerate only when the Python side changes deliberately.",
+  "clips": [
+    {
+      "source": "device_corpus_2026_08_17.jsonl",
+      "timestamp": "2026-08-17T07:12:22-07:00",
+      "clip_name": null,
+      "phases": {
+        "takeaway": 106,
+        "top": 110,
+        "impact": 124,
+        "finish": 137
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_17.jsonl",
+      "timestamp": "2026-08-17T07:51:50-07:00",
+      "clip_name": null,
+      "phases": {
+        "takeaway": 239,
+        "top": 299,
+        "impact": 311,
+        "finish": 320
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_17.jsonl",
+      "timestamp": "2026-08-17T07:53:41-07:00",
+      "clip_name": null,
+      "phases": {
+        "takeaway": 244,
+        "top": 272,
+        "impact": 282,
+        "finish": 301
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_17.jsonl",
+      "timestamp": "2026-08-17T07:54:23-07:00",
+      "clip_name": null,
+      "phases": {
+        "takeaway": 264,
+        "top": 294,
+        "impact": 302,
+        "finish": 312
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_17.jsonl",
+      "timestamp": "2026-08-17T07:55:17-07:00",
+      "clip_name": null,
+      "phases": {
+        "takeaway": 316,
+        "top": 341,
+        "impact": 350,
+        "finish": 360
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_19.jsonl",
+      "timestamp": "2026-08-19T19:38:32-07:00",
+      "clip_name": "swing_20260819_193824.mp4",
+      "phases": {
+        "takeaway": 169,
+        "top": 205,
+        "impact": 217,
+        "finish": 226
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_19.jsonl",
+      "timestamp": "2026-08-19T19:38:59-07:00",
+      "clip_name": "swing_20260819_193851.mp4",
+      "phases": {
+        "takeaway": 166,
+        "top": 206,
+        "impact": 217,
+        "finish": 224
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_19.jsonl",
+      "timestamp": "2026-08-19T19:39:26-07:00",
+      "clip_name": "swing_20260819_193916.mp4",
+      "phases": {
+        "takeaway": 228,
+        "top": 253,
+        "impact": 262,
+        "finish": 272
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_20.jsonl",
+      "timestamp": "2026-08-20T17:18:49-07:00",
+      "clip_name": "swing_20260820_171840.mp4",
+      "phases": {
+        "takeaway": 218,
+        "top": 265,
+        "impact": 273,
+        "finish": 284
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_20.jsonl",
+      "timestamp": "2026-08-20T17:19:20-07:00",
+      "clip_name": "swing_20260820_171911.mp4",
+      "phases": {
+        "takeaway": 233,
+        "top": 256,
+        "impact": 267,
+        "finish": 283
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_20.jsonl",
+      "timestamp": "2026-08-20T17:19:48-07:00",
+      "clip_name": "swing_20260820_171938.mp4",
+      "phases": {
+        "takeaway": 230,
+        "top": 257,
+        "impact": 268,
+        "finish": 279
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_20b.jsonl",
+      "timestamp": "2026-08-20T18:02:14-07:00",
+      "clip_name": "swing_20260820_180205.mp4",
+      "phases": {
+        "takeaway": 209,
+        "top": 232,
+        "impact": 244,
+        "finish": 253
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_20b.jsonl",
+      "timestamp": "2026-08-20T18:02:51-07:00",
+      "clip_name": "swing_20260820_180238.mp4",
+      "phases": {
+        "takeaway": 223,
+        "top": 240,
+        "impact": 252,
+        "finish": 263
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_20b.jsonl",
+      "timestamp": "2026-08-20T18:03:24-07:00",
+      "clip_name": "swing_20260820_180317.mp4",
+      "phases": null
+    },
+    {
+      "source": "device_corpus_2026_08_20b.jsonl",
+      "timestamp": "2026-08-20T18:03:57-07:00",
+      "clip_name": "swing_20260820_180347.mp4",
+      "phases": {
+        "takeaway": 148,
+        "top": 149,
+        "impact": 161,
+        "finish": 187
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_20c.jsonl",
+      "timestamp": "2026-08-20T18:22:41-07:00",
+      "clip_name": "swing_20260820_182232.mp4",
+      "phases": {
+        "takeaway": 233,
+        "top": 253,
+        "impact": 263,
+        "finish": 280
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_20d.jsonl",
+      "timestamp": "2026-08-20T18:50:26-07:00",
+      "clip_name": "swing_20260820_185017.mp4",
+      "phases": {
+        "takeaway": 212,
+        "top": 233,
+        "impact": 241,
+        "finish": 249
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_20d.jsonl",
+      "timestamp": "2026-08-20T18:50:51-07:00",
+      "clip_name": "swing_20260820_185042.mp4",
+      "phases": {
+        "takeaway": 213,
+        "top": 234,
+        "impact": 242,
+        "finish": 250
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_20d.jsonl",
+      "timestamp": "2026-08-20T18:51:17-07:00",
+      "clip_name": "swing_20260820_185108.mp4",
+      "phases": {
+        "takeaway": 225,
+        "top": 254,
+        "impact": 263,
+        "finish": 271
+      }
+    },
+    {
+      "source": "device_corpus_2026_08_20d.jsonl",
+      "timestamp": "2026-08-20T18:51:43-07:00",
+      "clip_name": "swing_20260820_185134.mp4",
+      "phases": {
+        "takeaway": 188,
+        "top": 229,
+        "impact": 238,
+        "finish": 247
+      }
+    }
+  ]
+}
