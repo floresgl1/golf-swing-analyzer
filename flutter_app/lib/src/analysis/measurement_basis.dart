@@ -33,7 +33,7 @@ import 'faults.dart';
 const int measurementAlgoVersion = 1;
 
 /// App build recorded alongside each swing. Mirrors `version:` in pubspec.yaml.
-const String appVersion = '0.1.0+2';
+const String appVersion = '0.1.0+3';
 
 // ---------------------------------------------------------------------------
 // Window constants — MIRRORED from faults.dart / swing_phases.dart.
