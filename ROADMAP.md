@@ -725,6 +725,28 @@ with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
 read as the fastest descent in the clip. Every clip in the corpus carries a
 few: 3 to 19 jumps over 0.5 torso-lengths each.
 
+**PRE-REGISTERED PREDICTION, written before the data arrived (2026-08-20).**
+Three more swings were recorded with the same routine as the 2026-08-19 set and
+labelled from video at ~7 s. Recording the expectation first, because every
+wrong call in this section so far was rationalised after the fact:
+
+  * `detect_phases`: **0/3**. It has missed 7/7 labelled and 8/8 unlabelled;
+    a hit here would mean something about the clip changed, not the detector.
+  * `locate_swing`: **2/3**, matching the previous same-routine set. Anything
+    from 1 to 3 is inside what three samples can produce, so 3/3 would NOT be
+    evidence it works, and 1/3 would not be evidence it got worse.
+  * The failure, if there is one, lands in the **walk-in around 3 s**, where
+    lowering the club into address out-descends the downswing (-12.9 against
+    -8.9 torso-lengths/s on `swing_..._193851.mp4`).
+
+**What would actually change the plan:** a failure that is NOT in the walk-in.
+That would mean the competing-descent story is incomplete, and "search after
+address onset" — the last idea standing — is not the fix either.
+
+**What this cannot settle**, no matter how it comes out: whether the address
+bound works, since none of these six clips vary the routine. Six samples of one
+routine is one condition measured six times.
+
 **`locate_swing` IS NOT "DEMONSTRABLY BETTER". MEASURED 2026-08-20.** The
 paragraph above claims it "puts the events *inside* the swing on all five
 recordings instead of at frame 1". That claim was made by looking at plots.
