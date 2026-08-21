@@ -20,6 +20,7 @@ class ProfileScreen extends StatefulWidget {
     super.key,
     required this.participant,
     required this.store,
+    this.onParticipantChanged,
   });
 
   final Participant participant;
@@ -27,12 +28,25 @@ class ProfileScreen extends StatefulWidget {
   /// Null when device storage was unavailable; edits then cannot be saved.
   final ParticipantStore? store;
 
+  /// Called when the participant record is saved, so the navigation shell can
+  /// propagate changes (e.g. handedness) to sibling tabs.
+  final ValueChanged<Participant>? onParticipantChanged;
+
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late Participant _participant = widget.participant;
+
+  @override
+  void didUpdateWidget(covariant ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.participant != widget.participant) {
+      _participant = widget.participant;
+    }
+  }
+
   /// Anchors the iOS share popover to the export button.
   final GlobalKey _exportButtonKey = GlobalKey();
   bool _exporting = false;
@@ -151,7 +165,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (store == null) return;
     try {
       final saved = await store.setCoachReport(faultId, value);
-      if (mounted) setState(() => _participant = saved);
+      if (mounted) {
+        setState(() => _participant = saved);
+        widget.onParticipantChanged?.call(saved);
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

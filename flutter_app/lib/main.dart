@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'src/analysis/participant.dart';
 import 'src/models/drill.dart';
 import 'src/services/drill_library_loader.dart';
-import 'src/ui/record_screen.dart';
+import 'src/ui/home_shell.dart';
 import 'src/ui/theme/app_theme.dart';
 
 Future<void> main() async {
@@ -78,7 +78,7 @@ class GolfSwingApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: appTheme,
       darkTheme: appTheme,
-      home: RecordScreen(
+      home: HomeShell(
         drills: drills,
         cameras: cameras,
         participant: participant,
