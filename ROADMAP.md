@@ -725,6 +725,133 @@ with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
 read as the fastest descent in the clip. Every clip in the corpus carries a
 few: 3 to 19 jumps over 0.5 torso-lengths each.
 
+#### P1.1 — THE GATE IS WRONG IN BOTH DIRECTIONS (2026-08-20)
+
+Six clips were filmed to test it: three varied swing routines and three
+deliberate negatives. The gate's full behaviour, for the first time:
+
+```
+clip                                    contains   gate said        verdict
+1  walk in, club already down, swing     a swing   "not a swing"    FALSE NEGATIVE
+2  walk in, settle, pause, swing         a swing    full report     ok
+3  practice swing, then the real one     a swing    full report     ok
+4  empty range, nobody in frame          nothing   "not a swing"    ok
+5  walk in, stand there, walk out        nothing    full report     FALSE POSITIVE
+6  set up to the ball, then step away    nothing    full report     FALSE POSITIVE
+```
+
+**It rejected a real swing and accepted two non-swings.** The false negative is
+in some ways the worse one: the golfer did everything asked — side-on, whole
+body in frame, camera still — and was told *"that didn't look like a golf
+swing."* Being wrong in both directions at once means the gate is not
+mis-tuned; it is not measuring the thing it claims to measure.
+
+**Clip 1's data is gone**, which is precisely the defect the rejection log
+fixes: a hard fail wrote nothing, so the one clip that would explain *why* a
+real swing gets rejected cannot be examined. The fix is committed and is not on
+the phone yet. **Re-film clip 1 after the next release**, because it is the
+most diagnostic clip in the set.
+
+**The negatives are now three, not one.** Clips 5 and 6 are recorded as
+`no_swing` with `basis: video`. Against them:
+
+```
+                    07:12:22    180317    180347
+detect_phases        invents    invents   invents
+locate_swing         invents    invents   invents
+stance_bounded       invents   DECLINES   invents
+```
+
+One decline out of three, and it came from a mechanism rather than a threshold:
+on 180317 the golfer never stood still long enough to form a stance, so there
+was nothing to search. **That is the first time any localizer has correctly
+refused a clip with a person in it.** It is one clip. It is not a gate.
+
+**A flaw in the stance work, found by these clips and fixed.** When stance
+bounding found no stance, `detect_phases` fell through to peak localization —
+measured at 0/10 — and turned that decline into an invented swing at 0.2 s. A
+caller who opts into stance bounding is asking a question whose answer may be
+"there is no stance"; swallowing that answer to produce a guess is strictly
+worse than returning it.
+
+**The practice swing beats the stance bound, as predicted.** Clip 3 holds two
+excursions, ~8 s and ~13-14 s, and the stance (5.2-16.1 s) contains both. The
+golfer confirms **the first is the practice swing**; the real one is the second.
+The stance-bounded search anchors at 8.01 s — **five seconds early, on the
+practice swing.**
+
+This was predicted before the clip was filmed, which is the only reason it is
+worth anything: a stance bound cannot separate two swings that both happen
+while the golfer is standing still. It is now measured rather than argued.
+
+**Why this distractor is different in kind from the others.** Every failure
+before it came from something that was not a swing — pose garbage in the
+walk-in, a club being lowered into address. Those can, in principle, be
+cleaned away. A practice swing **is a swing**: it happens inside the stance, it
+has the correct shape, the correct duration, the correct descent rate. No
+amount of signal processing distinguishes it, because there is nothing wrong
+with it. Only something that knows *which swing the golfer meant* can choose.
+
+That is a product problem wearing a signal-processing costume, and it points
+at the scrubber ("was this the swing?") already sketched under P1.4 — or at
+the simpler answer of taking the LAST qualifying swing in the stance, on the
+grounds that a golfer practices and then hits. **The last-swing rule is a
+guess with one supporting clip, and it is not being implemented on that.**
+
+Running totals with clip 3 labelled to the real swing:
+
+```
+                    video labels   sheet labels
+detect_phases           0/7            0/4
+locate_swing            2/7            0/4
+stance_bounded          6/7            3/4
+```
+
+#### P1.1 — THE GATE WORKS ON AN EMPTY FRAME, AND THE APP WAS BINNING THE EVIDENCE (2026-08-20)
+
+Filming the empty range — camera running, nobody in frame — produced the hard
+fail: *"That didn't look like a golf swing — no phases were detected."* So the
+shipped gate **does** catch one class of negative, and this is the first
+measured evidence of it.
+
+**Which sharpens what P1.1 actually is.** The gate catches *no pose anywhere*
+(`detectPhases` returns null below two detected frames). It does not catch
+*poses found, but no swing* — the 2026-08-17 nothing-clip had `pose_coverage`
+0.61 and sailed through to a full fault report. Two different negatives, one
+of them handled. Nothing before this said which.
+
+**The serious finding is what happened to the clip.** A hard fail wrote
+**nothing at all**: `_logWriteFailure` only fires when the history write
+breaks, not when a swing is rejected. So the corpus could only ever contain
+clips that passed the gate — which makes the gate's own error rate
+unmeasurable from the data it produces. Ten positives and one negative on
+record, and a golfer had just filmed a negative that the app discarded.
+
+**Fixed.** `SwingAnalysisException` now carries the measurements taken before
+the rejection — frame series, fps, frame count, pose coverage — and
+`RejectionLog` appends them to `swing_history_rejections.jsonl`, joined to the
+retained clip by `clip_name` and exported with the rest of the corpus. A
+rejected swing is now a corpus record with the same per-frame shape as an
+accepted one, so the scorer reads both with one parser.
+
+Kept in a separate file rather than mixed into `swing_history.jsonl`: these
+records have no faults, no tempo and no phases, and a reader assuming those
+fields would break on them.
+
+**Two bugs the tests caught before the golfer could.** JSON has no NaN, so a
+frame series holding raw NaN cannot be encoded and `record()` would have
+dropped it silently — exactly the empty-frame case this exists to capture.
+Production is safe because `FrameSeries.fromFeatures` maps NaN to null, and the
+test now goes through that path rather than constructing a series production
+never builds. The second was mine: the "unwritable log" test passed a deleted
+directory, which `record()` simply recreates.
+
+**Still open, and unchanged by any of this:** all three localizers invent a
+swing in the 2026-08-17 nothing-clip. Catching an empty frame is not the same
+as knowing whether a person in frame swung, and the gate still cannot tell.
+That needs negatives of the second kind — someone in frame, not swinging — and
+now the app will keep them instead of throwing them away.
+
 #### P1.4 — STANCE-BOUNDED SEARCH PASSES THE NECESSARY CONDITION (2026-08-20)
 
 Every localization failure on record happens **outside the stance**. Filming

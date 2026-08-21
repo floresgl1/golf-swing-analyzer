@@ -148,7 +148,68 @@
       "impact_s": null,
       "finish_s": null,
       "swing_start_source": "golfer, watching the clips: 'all with the swing starting around 7 seconds', same routine as the 2026-08-19 set (2026-08-20)"
+    },
+    {
+      "timestamp": "2026-08-20T18:02:14-07:00",
+      "clip_name": "swing_20260820_180205.mp4",
+      "sheet": "sheets/swing_20260820_180205.png",
+      "frame_count": 391,
+      "fps": 29.97002997002997,
+      "label_basis": null,
+      "swing_start_s": null,
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null
+    },
+    {
+      "timestamp": "2026-08-20T18:02:51-07:00",
+      "clip_name": "swing_20260820_180238.mp4",
+      "sheet": "sheets/swing_20260820_180238.png",
+      "frame_count": 570,
+      "fps": 29.97002997002997,
+      "label_basis": "video",
+      "swing_start_s": 13.0,
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "practice_swings_s": [
+        8.0
+      ],
+      "swing_start_source": "golfer, 2026-08-20: clip 3, 'take a practice swing first, then step in and hit the real one'. The excursion at ~8s is the PRACTICE swing; the real one is the second, at ~13-14s. Labelled to the real swing -- a localizer that finds the practice swing has not found the swing the golfer wanted analyzed."
+    },
+    {
+      "timestamp": "2026-08-20T18:03:24-07:00",
+      "clip_name": "swing_20260820_180317.mp4",
+      "sheet": "sheets/swing_20260820_180317.png",
+      "frame_count": 323,
+      "fps": 29.97002997002997,
+      "label_basis": "video",
+      "swing_start_s": null,
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "no_swing": true,
+      "swing_start_source": "golfer, 2026-08-20: filmed as a deliberate negative -- clip 5 'walk in, stand there, walk out' and clip 6 'set up to the ball then step away'. Confirmed by the sheet: flat near 0 torso-lengths throughout, no excursion anywhere. This is clip 5 (walk in, stand, walk out)."
+    },
+    {
+      "timestamp": "2026-08-20T18:03:57-07:00",
+      "clip_name": "swing_20260820_180347.mp4",
+      "sheet": "sheets/swing_20260820_180347.png",
+      "frame_count": 410,
+      "fps": 29.97002997002997,
+      "label_basis": "video",
+      "swing_start_s": null,
+      "takeaway_s": null,
+      "top_s": null,
+      "impact_s": null,
+      "finish_s": null,
+      "no_swing": true,
+      "swing_start_source": "golfer, 2026-08-20: filmed as a deliberate negative -- clip 5 'walk in, stand there, walk out' and clip 6 'set up to the ball then step away'. Confirmed by the sheet: flat near 0 torso-lengths throughout, no excursion anywhere. This is clip 6 (set up, then step away)."
     }
   ],
-  "negative_note": "`no_swing: true` marks a clip that contains no swing at all. A detector that reports phases here is not merely imprecise, it is inventing a swing -- which is the P1.1 defect: the app produced a full fault report with drills for a video of nothing."
+  "negative_note": "`no_swing: true` marks a clip that contains no swing at all. A detector that reports phases here is not merely imprecise, it is inventing a swing -- which is the P1.1 defect: the app produced a full fault report with drills for a video of nothing.",
+  "practice_note": "`practice_swings_s` lists excursions that are real swings but NOT the one the golfer wanted a report on. They are the hardest distractor there is: they happen inside the stance, they have the correct shape, and no amount of signal cleaning can tell them from the real swing. Only something that knows which one the golfer meant can."
 }
