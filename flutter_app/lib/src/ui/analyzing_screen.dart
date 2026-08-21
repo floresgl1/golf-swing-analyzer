@@ -187,6 +187,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
             analysis: analysis,
             comparison: comparison,
             writeStatus: writeStatus,
+            clipPath: clip?.path,
           ),
         ),
       );

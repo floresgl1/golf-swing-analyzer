@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../analysis/faults.dart' show faultIds, faultLabels;
 import '../analysis/measurement_basis.dart' show appVersion;
 import '../analysis/participant.dart';
 import '../analysis/swing_history.dart';
@@ -177,6 +178,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _setCalibration({required bool enabled, String? fault}) async {
+    final store = widget.store;
+    setState(() {
+      _participant = _participant.copyWith(
+        calibrationMode: enabled,
+        calibrationFault: fault ?? _participant.calibrationFault,
+      );
+    });
+    if (store == null) return;
+    try {
+      final saved = await store.setCalibration(
+        enabled: enabled,
+        fault: fault ?? _participant.calibrationFault,
+      );
+      if (mounted) {
+        setState(() => _participant = saved);
+        widget.onParticipantChanged?.call(saved);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save: $error')),
+      );
+    }
+  }
+
   /// Anchor the iOS share sheet to the export button.
   ///
   /// Omitting this is not a cosmetic slip: share_plus rejects a null or
@@ -259,6 +286,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
               label: faultLabels[faultId] ?? faultId,
               value: _participant.coachReports[faultId],
               onChanged: (value) => _setReport(faultId, value),
+            ),
+          const Divider(height: 32),
+
+          // Calibration mode — corpus instrumentation, not a golfer feature.
+          // Tucked in Profile so it's accessible without cluttering the
+          // viewfinder. See ROADMAP.md item 2.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child:
+                Text('Calibration mode', style: theme.textTheme.titleMedium),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Text(
+              'Record a swing with one fault deliberately exaggerated, as a '
+              'labelled positive control for the detectors.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Calibration swing'),
+            subtitle: _participant.calibrationMode
+                ? Text(
+                    'Next swing will be recorded as a calibration for '
+                    '"${faultLabels[_participant.calibrationFault ?? faultIds.first] ?? faultIds.first}".',
+                  )
+                : const Text('Off — swings are recorded normally.'),
+            value: _participant.calibrationMode,
+            onChanged: widget.store == null
+                ? null
+                : (value) => _setCalibration(enabled: value),
+          ),
+          if (_participant.calibrationMode)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: DropdownButtonFormField<String>(
+                value: _participant.calibrationFault ?? faultIds.first,
+                decoration: const InputDecoration(
+                  labelText: 'Fault to exaggerate',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  for (final id in faultIds)
+                    DropdownMenuItem(
+                      value: id,
+                      child: Text(faultLabels[id] ?? id),
+                    ),
+                ],
+                onChanged: widget.store == null
+                    ? null
+                    : (value) {
+                        if (value != null) {
+                          _setCalibration(enabled: true, fault: value);
+                        }
+                      },
+              ),
             ),
           const Divider(height: 32),
           Padding(

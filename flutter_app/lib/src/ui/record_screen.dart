@@ -55,12 +55,15 @@ class _RecordScreenState extends State<RecordScreen> {
   /// not silently revert to right-handed for a lefty who set it last week.
   late Handedness _handedness;
 
-  /// Whether this is a natural swing or a deliberately exaggerated one recorded
-  /// as a labelled positive control.
-  SwingKind _swingKind = SwingKind.natural;
+  /// Derived from the participant's calibration mode — set in Profile, read
+  /// here. No longer local state: the ROADMAP requires the calibration
+  /// controls off the viewfinder and behind a Profile toggle.
+  SwingKind get _swingKind => widget.participant.calibrationMode
+      ? SwingKind.calibration
+      : SwingKind.natural;
 
-  /// The fault being deliberately exaggerated on a calibration swing.
-  String _calibrationFault = faultIds.first;
+  String get _calibrationFault =>
+      widget.participant.calibrationFault ?? faultIds.first;
 
   /// Elapsed recording timer.
   Timer? _elapsedTimer;
@@ -280,8 +283,28 @@ class _ViewfinderLayout extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Camera preview — fills the entire screen.
-        CameraPreview(controller),
+        // Camera preview — center-cropped to the screen aspect ratio.
+        //
+        // CameraPreview wraps an AspectRatio, which cannot honor its ratio
+        // under the tight constraints a non-positioned Stack child receives.
+        // Without this fix the preview stretches to the screen shape, which
+        // distorts what the golfer frames against — a measurement-quality
+        // issue, not a cosmetic one. FittedBox.cover sizes the child at its
+        // natural ratio and then scales + center-crops to fill the parent.
+        //
+        // previewSize is reported in landscape orientation by the camera
+        // plugin, so width↔height are swapped for portrait display.
+        Positioned.fill(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(
+              width: controller.value.previewSize?.height ?? 1,
+              height: controller.value.previewSize?.width ?? 1,
+              child: CameraPreview(controller),
+            ),
+          ),
+        ),
 
         // Framing guide overlay — always visible when not recording.
         if (!isRecording && selfTimerRemaining == null)

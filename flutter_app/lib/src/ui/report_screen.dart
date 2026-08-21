@@ -10,6 +10,7 @@ import 'widgets/drill_tile.dart';
 import 'widgets/measurement_gauge.dart';
 import 'widgets/phase_montage.dart';
 import 'widgets/swing_comparison_view.dart';
+import 'widgets/swing_player.dart';
 
 /// The swing report, structured around visual hierarchy:
 ///   1. Hero — swing stills + tempo on one strong surface.
@@ -27,6 +28,7 @@ class ReportScreen extends StatelessWidget {
     required this.analysis,
     this.comparison,
     this.writeStatus = HistoryWriteStatus.saved,
+    this.clipPath,
   });
 
   final SwingAnalysis analysis;
@@ -39,6 +41,11 @@ class ReportScreen extends StatelessWidget {
   /// rather than swallowed: a tester whose swings stopped recording should find
   /// that out from the app, not from an empty export weeks later.
   final HistoryWriteStatus writeStatus;
+
+  /// Path to the retained recording, or null when the clip could not be kept.
+  /// When present, the report shows a video player with phase markers so the
+  /// golfer can scrub through the swing that was measured.
+  final String? clipPath;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +66,17 @@ class ReportScreen extends StatelessWidget {
         children: [
           // 1. Hero: stills + tempo on one strong surface.
           _HeroSection(analysis: analysis),
+
+          // Video scrubber — the golfer's swing with phase markers on the
+          // timeline. Placed right after the hero stills so they can scrub
+          // through the exact clip those stills came from.
+          if (clipPath != null)
+            SwingPlayer(
+              clipPath: clipPath!,
+              phases: analysis.phases,
+              fps: analysis.fps,
+              frameCount: analysis.frameCount,
+            ),
           const _BetaCaveat(),
           if (writeStatus == HistoryWriteStatus.failed) const _NotSavedNotice(),
 

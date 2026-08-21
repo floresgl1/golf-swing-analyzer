@@ -27,6 +27,11 @@ dependencies:
   path_provider: ^2.1.0
   path: ^1.9.0
 
+  # Playback of the retained clip on the report screen, with a custom scrubber
+  # showing swing phase markers. Gives the golfer frame-level evidence of what
+  # was measured. See ROADMAP.md item 3.
+  video_player: ^2.9.0
+
   # Manual corpus export via the system share sheet. Deliberately the only way
   # swings leave the device: no backend, no upload, no account.
   share_plus: ^10.0.0
