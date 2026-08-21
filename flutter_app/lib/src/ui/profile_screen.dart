@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../analysis/measurement_basis.dart' show appVersion;
 import '../analysis/participant.dart';
 import '../analysis/swing_history.dart';
 import '../services/clip_store.dart';
@@ -222,21 +224,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text('Anonymous id', style: theme.textTheme.titleMedium),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              '${_participant.id}\n\nRandomly generated on this device. It is '
-              'not linked to you, your phone, or any account — it only groups '
-              'your swings together.',
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
-          const Divider(height: 32),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
             child:
                 Text('What a coach has told you', style: theme.textTheme.titleMedium),
           ),
@@ -315,6 +303,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               label: Text(_deletingClips ? 'Deleting…' : 'Delete saved videos'),
             ),
           ),
+          const Divider(height: 32),
+          _DiagnosticsSection(participantId: _participant.id),
         ],
       ),
     );
@@ -355,6 +345,61 @@ class _CoachReportRow extends StatelessWidget {
               if (selection.isNotEmpty) onChanged(selection.first);
             },
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Version and anonymous ID — small, at the bottom, for support and debugging.
+class _DiagnosticsSection extends StatelessWidget {
+  const _DiagnosticsSection({required this.participantId});
+
+  final String participantId;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.outline,
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Diagnostics', style: theme.textTheme.titleMedium),
+          Gap.sm,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  participantId,
+                  style: muted?.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.copy, size: 16),
+                tooltip: 'Copy ID',
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: participantId));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('ID copied')),
+                  );
+                },
+              ),
+            ],
+          ),
+          Text(
+            'Randomly generated on this device. Groups your swings '
+            'together — not linked to you or any account.',
+            style: muted,
+          ),
+          Gap.sm,
+          Text('Fore Swing $appVersion', style: muted),
         ],
       ),
     );
