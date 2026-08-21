@@ -746,6 +746,21 @@ body in frame, camera still — and was told *"that didn't look like a golf
 swing."* Being wrong in both directions at once means the gate is not
 mis-tuned; it is not measuring the thing it claims to measure.
 
+**Clip 1 re-filmed 2026-08-20: the same routine was ACCEPTED.** Walk in with
+the club already down, set up, swing — rejected the first time, analyzed
+without complaint the second (`swing_20260820_182232.mp4`, 13.9 s, coverage
+0.68, a clean excursion to 1.09 torso-lengths at s8-s9). Nothing in the build
+changed the gate between the two attempts.
+
+**So the false negative is intermittent, which is worse than a consistent
+one.** A gate that always rejected this routine could be characterised and
+fixed. One that rejects it sometimes cannot be reproduced on demand, and a
+golfer hitting it has no way to tell whether they did something wrong or the
+app simply declined this time. The first attempt's data is still gone, so what
+differed between the two clips is unknown and unknowable — the rejection log
+that would have preserved it is committed but was not on the phone for either
+attempt.
+
 **Clip 1's data is gone**, which is precisely the defect the rejection log
 fixes: a hard fail wrote nothing, so the one clip that would explain *why* a
 real swing gets rejected cannot be examined. The fix is committed and is not on
