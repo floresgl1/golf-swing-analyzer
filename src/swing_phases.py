@@ -175,6 +175,14 @@ def detect_phases(wrist_y, fps=BASELINE_FPS, smooth=None, torso=None,
         located = locate_swing(wrist_y, torso, fps, hip_x=hip_x)
         if located is not None:
             return located
+        # When the caller asked for stance bounding and no stance was found,
+        # that is an ANSWER, not a gap to paper over. Falling through to peak
+        # localization here would replace "the golfer never stood still, so
+        # there is no swing to locate" with a guess from a method measured at
+        # 0/10 -- and it did exactly that on a no-swing clip of 2026-08-20,
+        # turning a usable decline into an invented swing at 0.2s.
+        if hip_x is not None:
+            return None
 
     if smooth is None:
         smooth = frames_for(SMOOTH_WINDOW_S, fps, odd=True)
