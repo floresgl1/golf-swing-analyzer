@@ -275,9 +275,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
-              'Optional. If a coach has pointed out one of these in your swing, '
-              'saying so here helps us check whether the app agrees. It is not '
-              'used to change your reports.',
+              'If a coach has pointed out any of these, let us know — '
+              'it helps us check whether the app is seeing the same thing. '
+              'This won\'t change your reports.',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -300,8 +300,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
             child: Text(
-              'Record a swing with one fault deliberately exaggerated, as a '
-              'labelled positive control for the detectors.',
+              'Record a swing with one fault exaggerated on purpose, so we can '
+              'check the detectors are seeing it.',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -351,8 +351,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
-              'Swings stay on this phone — nothing is uploaded. '
-              'Use this to share the file when you\'re ready.',
+              'Your swings stay on this phone — nothing is uploaded. '
+              'Share the file whenever you\'re ready.',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -494,8 +494,8 @@ class _DiagnosticsSection extends StatelessWidget {
             ],
           ),
           Text(
-            'Randomly generated on this device. Groups your swings '
-            'together — not linked to you or any account.',
+            'Random ID for this device — groups your swings together. '
+            'Not linked to you or any account.',
             style: muted,
           ),
           Gap.sm,

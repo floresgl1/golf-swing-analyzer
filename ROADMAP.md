@@ -1601,7 +1601,7 @@ The camera half is landed and green (run on `main` @ `067cab2`).
 - **Sharing**: export swing reports as images or PDFs for sharing with an instructor
 - **Onboarding**: guide for recording angle, distance, lighting for best results
 
-### Product voice — the app reads like it was generated, not written (2026-08-17)
+### ✅ Product voice — the app reads like it was generated, not written (2026-08-17)
 
 Raised after seeing the shipped screens on device. The app is *accurate* and
 *honest* and still reads like documentation. It has no voice, and a golfer can
@@ -1656,6 +1656,18 @@ screen structure, and the fact that the report shows no image of the swing it
 measured — is tracked in **Front-end UI** immediately below. Neither pass
 fixes the other: rewriting every sentence in the app would leave it looking
 exactly as template-built as it does now.
+
+*Done 2026-08-21 (first pass).* Rewrote all five screens' copy to coach
+register. Fault details in `swing_analyzer.dart` changed from calibration
+readouts (`"Moved 0.44 sideways (ref 0.13)"`) to golfer-facing observations
+(`"Your head drifted from address to impact"`). The gauge still carries the
+numeric precision. Comparison arrows `->` → `→`, "torso-lengths" unit
+dropped from comparison text (gauge shows the value). Beta banner already
+compressed (prior session). Clean-swing banner, not-saved notice, profile
+section copy, diagnostics ID description, and tempo caveat tightened.
+All hedges preserved — the "Possible" badge and beta caveat carry the
+epistemic framing structurally. The copy will be revisited after P0.2
+recalibrates the thresholds.
 
 ### Front-end UI — it looks generated before it reads generated (2026-08-20)
 

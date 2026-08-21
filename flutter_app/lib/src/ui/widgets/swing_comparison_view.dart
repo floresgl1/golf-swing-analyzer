@@ -28,11 +28,11 @@ class SwingComparisonView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Last swing vs this swing',
+            Text('Last time → this time',
                 style: theme.textTheme.titleMedium),
             Gap.xs,
             Text(
-              'Compared with ${_friendlyDate(previousDate)}',
+              'Previous swing: ${_friendlyDate(previousDate)}',
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: 12),
