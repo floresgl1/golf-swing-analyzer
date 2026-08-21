@@ -12,7 +12,9 @@
       "takeaway_s": null,
       "top_s": null,
       "impact_s": null,
-      "finish_s": null
+      "finish_s": null,
+      "no_swing": true,
+      "swing_start_source": "golfer, at the time of recording: 'i just took a random video of nothing'. Confirmed by the sheet -- flat at ~0.8 torso-lengths for all 5.6s, no excursion anywhere. A scored NEGATIVE for the P1.1 gate. (2026-08-17 / 2026-08-20)"
     },
     {
       "timestamp": "2026-08-17T07:51:50-07:00",
@@ -147,5 +149,6 @@
       "finish_s": null,
       "swing_start_source": "golfer, watching the clips: 'all with the swing starting around 7 seconds', same routine as the 2026-08-19 set (2026-08-20)"
     }
-  ]
+  ],
+  "negative_note": "`no_swing: true` marks a clip that contains no swing at all. A detector that reports phases here is not merely imprecise, it is inventing a swing -- which is the P1.1 defect: the app produced a full fault report with drills for a video of nothing."
 }

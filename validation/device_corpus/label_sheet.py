@@ -174,49 +174,43 @@ def slug_for(swing: dict) -> str:
 
 
 def write_template(swings: list[dict], path: Path) -> None:
-    """A labels.json with the slots empty, so filling it in is the only work.
+    """Write labels.json, preserving everything already in it.
 
-    Existing labels are carried over: regenerating after a new export must not
-    silently discard work someone already did.
+    Carry-over is by MERGE, not by an allowlist of known fields. An earlier
+    version copied a named list of keys forward and silently ate every label
+    it did not know about — `no_swing` on the negative clip, the provenance
+    notes, and the file's own top-level commentary — the first time the
+    template was regenerated. A tool whose failure mode is deleting the data
+    it exists to collect must not be careful only about the fields its author
+    happened to think of.
     """
-    existing = {}
-    if path.exists():
-        previous = json.loads(path.read_text())
-        for entry in previous.get("swings", []):
-            existing[entry.get("timestamp")] = entry
+    previous = json.loads(path.read_text()) if path.exists() else {}
+    existing = {e.get("timestamp"): e for e in previous.get("swings", [])}
 
-    template = {
-        "note": (
-            "Times in SECONDS from the start of the clip, for the record with "
-            "the matching timestamp. null means 'not visible / cannot tell' -- leave it "
-            "null rather than guessing; a guessed label is worse than a "
-            "missing one. `clip_name` is the video in Files this swing came "
-            "from, or null for captures made before the app kept them."
-        ),
-        "swings": [],
-    }
+    template = dict(previous)  # keep any top-level notes already written
+    template.setdefault("note", (
+        "Times in SECONDS from the start of the clip, for the record with "
+        "the matching timestamp. null means 'not visible / cannot tell' -- "
+        "leave it null rather than guessing; a guessed label is worse than a "
+        "missing one. `clip_name` is the video in Files this swing came "
+        "from, or null for captures made before the app kept them."
+    ))
+    template["swings"] = []
     for swing in swings:
-        prior = existing.get(swing["timestamp"], {})
-        template["swings"].append({
+        entry = dict(existing.get(swing["timestamp"], {}))
+        # Only the facts derived from the corpus are refreshed; everything a
+        # human put here survives untouched.
+        entry.update({
             "timestamp": swing["timestamp"],
             "clip_name": swing.get("clip_name"),
             "sheet": f"sheets/{slug_for(swing)}.png",
             "frame_count": swing["frame_count"],
             "fps": swing["fps"],
-            # SECONDS, because that is what a scrubber shows and what the
-            # sheets' x-axis reads. Frames are derived at scoring time. Asking
-            # a human to transcribe frame indices from a video player is asking
-            # for a class of error that does not need to exist.
-            # 'video' = somebody watched the clip, independent of the series
-            # the detectors read. 'sheet' = somebody read the plot, which is
-            # derived from that same series. Not equal evidence; kept apart.
-            "label_basis": prior.get("label_basis"),
-            "swing_start_s": prior.get("swing_start_s"),
-            "takeaway_s": prior.get("takeaway_s"),
-            "top_s": prior.get("top_s"),
-            "impact_s": prior.get("impact_s"),
-            "finish_s": prior.get("finish_s"),
         })
+        for field in ("label_basis", "swing_start_s", "takeaway_s", "top_s",
+                      "impact_s", "finish_s"):
+            entry.setdefault(field, None)
+        template["swings"].append(entry)
     path.write_text(json.dumps(template, indent=2) + "\n")
 
 
