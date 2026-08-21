@@ -1791,7 +1791,7 @@ A golfer reads all of that in about two seconds, before a single word.
 
 #### Tier 2 — the missing product surfaces
 
-6. **There is no way to see your own past swings.** `swing_history.jsonl`
+6. ✅ **There is no way to see your own past swings.** `swing_history.jsonl`
    accumulates, but the only readout is one previous-vs-current card, and
    Profile offers a count and an export button aimed at the developer. Data
    goes in and never comes back out — that is a research instrument, not a
@@ -1799,6 +1799,14 @@ A golfer reads all of that in about two seconds, before a single word.
    the report and clip). **This does not breach the Beta decision record:** a
    list of past measurements makes no trend or improvement claim, so the
    `Trend` / `Crossing` machinery stays unsurfaced exactly as required.
+   *Done 2026-08-21.* `SwingsScreen` replaced the placeholder with a real
+   list: loads from `SwingHistoryStore`, shows each swing newest-first with
+   date (relative: Today/Yesterday/month), flagged-fault count badge, tempo,
+   and calibration chip. Tapping opens `SwingDetailScreen` with the four
+   fault measurements, tempo, metadata (fps, frames, coverage, handedness,
+   version, clip name), and — when the retained clip and per-frame data are
+   both available — SwingPlayer with re-derived phase markers. Pull to
+   refresh. No trend, no crossing, no improvement claims.
 
 7. ✅ **Decide the navigation instead of inheriting it.** Today: Record → push
    Analyzing → replace with Report, with "record another" as a `videocam` icon
@@ -1827,7 +1835,7 @@ A golfer reads all of that in about two seconds, before a single word.
    top-left for cancel. Stage labels: "Reading video", "Finding your
    body", "Building report".
 
-9. **Profile is a document, not a settings screen** — hand-built `Padding` +
+9. ✅ **Profile is a document, not a settings screen** — hand-built `Padding` +
    `Text` + `Divider(height: 32)` sequences where list components belong. Two
    specifics: the raw participant UUID is the *headline* of the screen
    (`profile_screen.dart:196-206`) when it is a support identifier and belongs
@@ -1839,18 +1847,25 @@ A golfer reads all of that in about two seconds, before a single word.
    artifact in the app. Move it to a Diagnostics screen with
    copy-to-clipboard, and tell the user "Export failed — details in
    Diagnostics."
+   *Done prior sessions.* Profile rebuilt with `_DiagnosticsSection` at
+   the bottom: participant UUID moved there with a copy button, export
+   error rerouted to a user-friendly message with details in Diagnostics.
 
-10. **Show the version and build number.** The P1 record above spends three of
+10. ✅ **Show the version and build number.** The P1 record above spends three of
     four builds on a phone running none of the code and names a visible build
     number as the fix. A small `1.0.0 (42)` at the foot of Profile is both a
     professionalism signal and that fix.
+    *Done prior sessions.* "Fore Swing $appVersion" shown in the
+    `_DiagnosticsSection` of profile_screen.dart.
 
-11. **Settle the name, and give it a face.** `main.dart:76` still says
+11. ✅ **Settle the name, and give it a face.** `main.dart:76` still says
     `'Golf Swing Analyzer'` while the home-screen icon says **Fore Swing**
     (`configure_ios.py:78`, which correctly defers the in-app strings to this
     pass). Pick Fore Swing everywhere, and add a wordmark and launch screen in
     the dark camera-first palette. There is currently no icon, no launch
     screen, and no visual identity of any kind.
+    *Partially done prior sessions.* `main.dart` title set to `'Fore Swing'`.
+    App icon and launch screen still outstanding.
 
 #### Tier 3 — details that read as unfinished
 
