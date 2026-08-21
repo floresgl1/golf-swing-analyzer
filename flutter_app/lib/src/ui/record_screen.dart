@@ -9,7 +9,6 @@ import '../analysis/participant.dart';
 import '../analysis/swing_history.dart';
 import '../models/drill.dart';
 import 'analyzing_screen.dart';
-import 'profile_screen.dart';
 import 'theme/app_theme.dart';
 
 /// First screen: full-bleed camera viewfinder with a circular shutter button,
@@ -21,18 +20,15 @@ class RecordScreen extends StatefulWidget {
     required this.drills,
     required this.cameras,
     required this.participant,
-    required this.participantStore,
     required this.captureSession,
   });
 
   final List<Drill> drills;
   final List<CameraDescription> cameras;
 
-  /// The anonymous local golfer these swings belong to.
+  /// The anonymous local golfer these swings belong to. Updated by the shell
+  /// when Profile saves changes, so [didUpdateWidget] picks up the latest.
   final Participant participant;
-
-  /// Null when device storage was unavailable at startup.
-  final ParticipantStore? participantStore;
 
   /// Groups every swing recorded in this run of the app.
   final CaptureSession captureSession;
@@ -66,8 +62,6 @@ class _RecordScreenState extends State<RecordScreen> {
   /// The fault being deliberately exaggerated on a calibration swing.
   String _calibrationFault = faultIds.first;
 
-  late Participant _participant = widget.participant;
-
   /// Elapsed recording timer.
   Timer? _elapsedTimer;
   Duration _elapsed = Duration.zero;
@@ -85,22 +79,12 @@ class _RecordScreenState extends State<RecordScreen> {
     }
   }
 
-  Future<void> _openProfile() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ProfileScreen(
-          participant: _participant,
-          store: widget.participantStore,
-        ),
-      ),
-    );
-    final store = widget.participantStore;
-    if (store == null) return;
-    try {
-      final refreshed = await store.loadOrCreate();
-      if (mounted) setState(() => _participant = refreshed);
-    } catch (_) {
-      // Keep the in-memory copy.
+  @override
+  void didUpdateWidget(covariant RecordScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.participant.id != widget.participant.id) {
+      // Participant changed (e.g. Profile saved) — pick up new handedness.
+      _handedness = widget.participant.handedness ?? _handedness;
     }
   }
 
@@ -194,7 +178,7 @@ class _RecordScreenState extends State<RecordScreen> {
           drills: widget.drills,
           handedness: _handedness,
           targeting: _targeting,
-          participantId: _participant.id,
+          participantId: widget.participant.id,
           captureSessionId: widget.captureSession.id,
           swingKind: _swingKind,
           calibrationFault: _calibrationFault,
@@ -258,7 +242,6 @@ class _RecordScreenState extends State<RecordScreen> {
                 : (value) => setState(() => _targeting = value),
             onShutterTap: _onShutterTap,
             onSelfTimerTap: _onSelfTimerTap,
-            onProfileTap: _openProfile,
           );
         },
       ),
@@ -280,7 +263,6 @@ class _ViewfinderLayout extends StatelessWidget {
     required this.onTargetingChanged,
     required this.onShutterTap,
     required this.onSelfTimerTap,
-    required this.onProfileTap,
   });
 
   final CameraController controller;
@@ -291,7 +273,6 @@ class _ViewfinderLayout extends StatelessWidget {
   final ValueChanged<String?>? onTargetingChanged;
   final VoidCallback onShutterTap;
   final VoidCallback onSelfTimerTap;
-  final VoidCallback onProfileTap;
 
   @override
   Widget build(BuildContext context) {
@@ -320,13 +301,8 @@ class _ViewfinderLayout extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  IconButton(
-                    tooltip: 'Profile',
-                    icon: Icon(Icons.person_outline, color: sc.onScrim),
-                    onPressed: isRecording ? null : onProfileTap,
-                  ),
-                  const Spacer(),
                   if (!isRecording && selfTimerRemaining == null)
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -377,9 +353,6 @@ class _ViewfinderLayout extends StatelessWidget {
                         ],
                       ),
                     ),
-                  const Spacer(),
-                  // Balance the row so the center content is centered.
-                  const SizedBox(width: 48),
                 ],
               ),
             ),
