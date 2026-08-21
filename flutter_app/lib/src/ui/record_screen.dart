@@ -152,10 +152,10 @@ class _RecordScreenState extends State<RecordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Record your swing'),
+        title: const Text('Record'),
         actions: [
           IconButton(
-            tooltip: 'Profile and export',
+            tooltip: 'Profile',
             icon: const Icon(Icons.person_outline),
             onPressed: _openProfile,
           ),
@@ -202,7 +202,7 @@ class _RecordScreenState extends State<RecordScreen> {
                   ? SwingColors.of(context).drillAdvanced
                   : null,
               icon: Icon(_isRecording ? Icons.stop : Icons.fiber_manual_record),
-              label: Text(_isRecording ? 'Stop & analyze' : 'Record'),
+              label: Text(_isRecording ? 'Stop' : 'Record'),
             ),
     );
   }
@@ -261,8 +261,7 @@ class _CameraPreviewWithHint extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    'Frame your whole body, down-the-line. Record one full swing, '
-                    'then tap stop to analyze.',
+                    'Side-on, full body in frame. Hit record, swing, then stop.',
                     style: TextStyle(color: sc.onScrim),
                   ),
                 );
@@ -463,7 +462,7 @@ class _TargetSelector extends StatelessWidget {
         children: [
           Icon(Icons.center_focus_strong, color: sc.onScrim, size: 18),
           Gap.hsm,
-          Text('Working on',
+          Text('Focus',
               style: TextStyle(color: sc.onScrim.withValues(alpha: 0.7))),
           const SizedBox(width: 12),
           Expanded(
@@ -479,7 +478,7 @@ class _TargetSelector extends StatelessWidget {
                 items: [
                   const DropdownMenuItem<String?>(
                     value: null,
-                    child: Text('Full swing check'),
+                    child: Text('Everything'),
                   ),
                   for (final id in faultIds)
                     DropdownMenuItem<String?>(
@@ -505,8 +504,7 @@ class _NoCameraMessage extends StatelessWidget {
       padding: EdgeInsets.all(24),
       child: Center(
         child: Text(
-          'No camera available on this device. A camera is required to record '
-          'and analyze a swing.',
+          'No camera found. Fore Swing needs a camera to record your swing.',
           textAlign: TextAlign.center,
         ),
       ),

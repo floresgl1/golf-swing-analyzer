@@ -40,7 +40,7 @@ class ReportScreen extends StatelessWidget {
     final comparison = this.comparison;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Swing report'),
+        title: const Text('Report'),
         actions: [
           IconButton(
             tooltip: 'Record another',
@@ -55,7 +55,7 @@ class ReportScreen extends StatelessWidget {
           const _BetaCaveat(),
           if (writeStatus == HistoryWriteStatus.failed) const _NotSavedNotice(),
           _TempoSummary(analysis: analysis),
-          const _SectionHeader('What we measured'),
+          const _SectionHeader('Measurements'),
           for (final verdict in analysis.faultsByFocus)
             FaultCard(
               verdict: verdict,
@@ -89,16 +89,13 @@ class _BetaCaveat extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.science_outlined,
+          Icon(Icons.info_outline,
               size: 16, color: theme.colorScheme.outline),
           Gap.hsm,
           Expanded(
             child: Text(
-              'Beta: these measurements are indicative only. The reference '
-              'values were tuned on high-speed footage, and phone video is '
-              'measured over different time windows than they assume, so the '
-              'numbers below are not directly comparable to them and have not '
-              'been checked against a reference set.',
+              'Early numbers — we haven\'t validated these against a wide '
+              'range of swings yet, so treat them as rough readings.',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.outline),
             ),
@@ -163,10 +160,8 @@ class _TempoSummary extends StatelessWidget {
             if (tempo == null)
               const Text('Tempo unavailable.')
             else ...[
-              Text('Backswing: ${tempo.backswingSeconds.toStringAsFixed(2)}s '
-                  '(${tempo.backswingFrames} frames)'),
-              Text('Downswing: ${tempo.downswingSeconds.toStringAsFixed(2)}s '
-                  '(${tempo.downswingFrames} frames)'),
+              Text('Backswing: ${tempo.backswingSeconds.toStringAsFixed(2)}s'),
+              Text('Downswing: ${tempo.downswingSeconds.toStringAsFixed(2)}s'),
               Gap.xs,
               Text(
                 'Ratio ${tempo.ratio.isFinite ? tempo.ratio.toStringAsFixed(1) : '—'} : 1',
@@ -187,7 +182,7 @@ class _TempoSummary extends StatelessWidget {
             ],
             Gap.sm,
             Text(
-              '${analysis.frameCount} frames @ ${analysis.fps.toStringAsFixed(0)} fps',
+              '${analysis.fps.toStringAsFixed(0)} fps',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -215,9 +210,8 @@ String _tempoCaveat(SwingTempo? tempo, double fps) {
   // to a friendlier-looking figure. Overstating the uncertainty is a smaller
   // lie than understating it, but it is still a lie.
   final window = precision.toStringAsFixed(precision < 0.1 ? 2 : 1);
-  return '$rate Timing is measured to the nearest frame — with '
-      '${tempo.backswingFrames} frames up and ${tempo.downswingFrames} down, '
-      'that puts this ratio within about $window either way.';
+  return '$rate At this frame rate the ratio is accurate to about '
+      '±$window.';
 }
 
 class _SectionHeader extends StatelessWidget {
@@ -252,9 +246,8 @@ class _CleanSwingBanner extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Text(
-          'None of the four measurements passed its reference value this '
-          'swing. That is not a clean bill of health — it means these four '
-          'checks did not see anything, not that the swing was good.',
+          'Nothing flagged on this swing. We only check four things, '
+          'so this isn\'t a clean bill of health — just nothing caught.',
           style: theme.textTheme.bodyMedium,
         ),
       ),

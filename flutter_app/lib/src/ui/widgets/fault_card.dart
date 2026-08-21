@@ -103,7 +103,7 @@ class FaultCard extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium),
             if (drills.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Text('Drills that target this',
+              Text('Try these drills',
                   style: Theme.of(context).textTheme.labelLarge),
               Gap.xs,
               ...drills,
