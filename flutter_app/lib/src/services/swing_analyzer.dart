@@ -9,6 +9,10 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../analysis/drill_recommender.dart';
 import '../analysis/faults.dart';
@@ -17,6 +21,7 @@ import '../analysis/swing_history.dart';
 import '../analysis/swing_phases.dart';
 import '../models/drill.dart';
 import '../models/frame_features.dart';
+import '../models/key_frame.dart';
 import '../models/swing_analysis.dart';
 import 'frame_extractor.dart';
 import 'pose_estimator.dart';
@@ -124,13 +129,34 @@ class SwingAnalyzer {
       }
 
       onProgress?.call(AnalysisStage.computingReport, 1);
-      return _buildReport(
+      final analysis = _buildReport(
         features,
         extracted.fps,
         targeting,
         swingKind,
         calibrationFault,
         clipName,
+      );
+
+      // Preserve address / top / impact stills before the working directory
+      // is cleaned up. These are the frames the golfer sees on the report —
+      // the visual evidence that the numbers came from a real observation.
+      final keyFrames = await _preserveKeyFrames(
+        extracted.framePaths,
+        analysis.phases,
+        features,
+      );
+
+      return SwingAnalysis(
+        phases: analysis.phases,
+        tempo: analysis.tempo,
+        fps: analysis.fps,
+        frameCount: analysis.frameCount,
+        faults: analysis.faults,
+        recommendations: analysis.recommendations,
+        session: analysis.session,
+        targeting: analysis.targeting,
+        keyFrames: keyFrames,
       );
     } finally {
       // Clean up the extracted JPEGs regardless of outcome.
@@ -289,6 +315,51 @@ class SwingAnalyzer {
     );
   }
 
+  /// Copy the address / top / impact JPEGs to a persistent directory so the
+  /// report screen can show them. Returns null on any failure — a missing
+  /// montage must never block the report.
+  Future<List<KeyFrame>?> _preserveKeyFrames(
+    List<String> framePaths,
+    SwingPhases phases,
+    List<FrameFeatures> features,
+  ) async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir =
+          await Directory(p.join(docs.path, 'key_frames')).create(recursive: true);
+
+      // The three frames that tell the story of a swing.
+      final entries = <_KeyFrameSpec>[
+        _KeyFrameSpec('Address', phases.takeaway, features),
+        _KeyFrameSpec('Top', phases.top, features),
+        _KeyFrameSpec('Impact', phases.impact, features),
+      ];
+
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final result = <KeyFrame>[];
+      for (final entry in entries) {
+        if (entry.index < 0 || entry.index >= framePaths.length) continue;
+        final source = File(framePaths[entry.index]);
+        if (!source.existsSync()) continue;
+        final dest = p.join(
+          dir.path,
+          '${stamp}_${entry.label.toLowerCase()}.jpg',
+        );
+        await source.copy(dest);
+        result.add(KeyFrame(
+          imagePath: dest,
+          label: entry.label,
+          frameIndex: entry.index,
+          features: entry.index < features.length ? features[entry.index] : null,
+        ));
+      }
+      return result.isEmpty ? null : result;
+    } catch (_) {
+      // Storage hiccup: the report still works without stills.
+      return null;
+    }
+  }
+
   Future<void> dispose() => _poseEstimator.dispose();
 
   static String _fmt(double v) => v.isFinite ? v.toStringAsFixed(2) : '—';
@@ -298,4 +369,12 @@ class SwingAnalyzer {
       v.isFinite ? '${v.toStringAsFixed(0)}°' : '—';
   static String _fmtSignedDeg(double v) =>
       v.isFinite ? '${v >= 0 ? '+' : ''}${v.toStringAsFixed(0)}°' : '—';
+}
+
+/// Bundles a key frame spec for [SwingAnalyzer._preserveKeyFrames].
+class _KeyFrameSpec {
+  final String label;
+  final int index;
+  final List<FrameFeatures> features;
+  const _KeyFrameSpec(this.label, this.index, this.features);
 }

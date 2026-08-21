@@ -7,6 +7,7 @@ import '../models/swing_analysis.dart';
 import 'theme/app_theme.dart';
 import 'widgets/drill_tile.dart';
 import 'widgets/fault_card.dart';
+import 'widgets/phase_montage.dart';
 import 'widgets/swing_comparison_view.dart';
 
 /// The swing report: tempo summary, the four fault measurements, drills nested
@@ -52,6 +53,8 @@ class ReportScreen extends StatelessWidget {
       ),
       body: ListView(
         children: [
+          if (analysis.keyFrames != null && analysis.keyFrames!.isNotEmpty)
+            PhaseMontage(keyFrames: analysis.keyFrames!),
           const _BetaCaveat(),
           if (writeStatus == HistoryWriteStatus.failed) const _NotSavedNotice(),
           _TempoSummary(analysis: analysis),

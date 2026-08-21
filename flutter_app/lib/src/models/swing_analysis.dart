@@ -7,6 +7,7 @@ import '../analysis/faults.dart';
 import '../analysis/swing_history.dart';
 import '../analysis/swing_phases.dart';
 import 'drill.dart';
+import 'key_frame.dart';
 
 /// A single fault's measurement plus a human-readable one-line detail, ready for
 /// the UI.
@@ -78,6 +79,10 @@ class SwingAnalysis {
   /// marks the report's focus and floats that fault to the top.
   final String? targeting;
 
+  /// Address, top, and impact stills preserved from the analysis pipeline.
+  /// Null when the frames could not be saved (storage error, missing frames).
+  final List<KeyFrame>? keyFrames;
+
   const SwingAnalysis({
     required this.phases,
     required this.tempo,
@@ -87,6 +92,7 @@ class SwingAnalysis {
     required this.recommendations,
     required this.session,
     this.targeting,
+    this.keyFrames,
   });
 
   bool get anyFlagged => faults.any((f) => f.flagged);
