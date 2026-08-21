@@ -24,8 +24,36 @@ import 'pose_estimator.dart';
 /// Thrown when the swing can't be analyzed (e.g. no pose detected in enough
 /// frames, so phases can't be located).
 class SwingAnalysisException implements Exception {
+  /// What to show the golfer.
   final String message;
-  const SwingAnalysisException(this.message);
+
+  /// Why the swing was rejected, in the detector's words rather than the
+  /// golfer's — e.g. 'no phases were detected'.
+  final String? reason;
+
+  /// Everything measured before the rejection, so the clip can still become a
+  /// corpus record.
+  ///
+  /// **A rejected clip is the most valuable clip there is, and until
+  /// 2026-08-20 the app threw it away.** Nothing was written when analysis
+  /// hard-failed, so the corpus could only ever contain swings that passed the
+  /// gate — which makes the gate's own error rate unmeasurable from it. P1.1
+  /// needs negatives, and the app was discarding the very clips a golfer had
+  /// already gone to the trouble of filming. See P1.1 in ROADMAP.md.
+  final FrameSeries? frames;
+  final double? fps;
+  final int? frameCount;
+  final double? poseCoverageFraction;
+
+  const SwingAnalysisException(
+    this.message, {
+    this.reason,
+    this.frames,
+    this.fps,
+    this.frameCount,
+    this.poseCoverageFraction,
+  });
+
   @override
   String toString() => 'SwingAnalysisException: $message';
 }
@@ -138,9 +166,16 @@ class SwingAnalyzer {
     // swing there is nothing for the app to say about it.
     final reason = implausibleSwing(detected);
     if (reason != null) {
+      // Carry the measurements out with the rejection. The golfer sees the
+      // message; the corpus gets a negative it can be scored against.
       throw SwingAnalysisException(
         "That didn't look like a golf swing — $reason. Film from side-on with "
         'your whole body in frame, and keep the camera still.',
+        reason: reason,
+        frames: FrameSeries.fromFeatures(features),
+        fps: fps,
+        frameCount: features.length,
+        poseCoverageFraction: poseCoverage(features),
       );
     }
 

@@ -87,6 +87,10 @@ class CorpusExporter {
   static const List<String> corpusFileNames = [
     'swing_history.jsonl',
     'participant.json',
+    // Clips the app refused to report on. Exported alongside the swings
+    // because a gate whose rejections never leave the device cannot be
+    // measured -- see rejection_log.dart.
+    'swing_history_rejections.jsonl',
     'swing_history_failures.jsonl',
   ];
 

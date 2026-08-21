@@ -725,6 +725,51 @@ with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
 read as the fastest descent in the clip. Every clip in the corpus carries a
 few: 3 to 19 jumps over 0.5 torso-lengths each.
 
+#### P1.1 — THE GATE WORKS ON AN EMPTY FRAME, AND THE APP WAS BINNING THE EVIDENCE (2026-08-20)
+
+Filming the empty range — camera running, nobody in frame — produced the hard
+fail: *"That didn't look like a golf swing — no phases were detected."* So the
+shipped gate **does** catch one class of negative, and this is the first
+measured evidence of it.
+
+**Which sharpens what P1.1 actually is.** The gate catches *no pose anywhere*
+(`detectPhases` returns null below two detected frames). It does not catch
+*poses found, but no swing* — the 2026-08-17 nothing-clip had `pose_coverage`
+0.61 and sailed through to a full fault report. Two different negatives, one
+of them handled. Nothing before this said which.
+
+**The serious finding is what happened to the clip.** A hard fail wrote
+**nothing at all**: `_logWriteFailure` only fires when the history write
+breaks, not when a swing is rejected. So the corpus could only ever contain
+clips that passed the gate — which makes the gate's own error rate
+unmeasurable from the data it produces. Ten positives and one negative on
+record, and a golfer had just filmed a negative that the app discarded.
+
+**Fixed.** `SwingAnalysisException` now carries the measurements taken before
+the rejection — frame series, fps, frame count, pose coverage — and
+`RejectionLog` appends them to `swing_history_rejections.jsonl`, joined to the
+retained clip by `clip_name` and exported with the rest of the corpus. A
+rejected swing is now a corpus record with the same per-frame shape as an
+accepted one, so the scorer reads both with one parser.
+
+Kept in a separate file rather than mixed into `swing_history.jsonl`: these
+records have no faults, no tempo and no phases, and a reader assuming those
+fields would break on them.
+
+**Two bugs the tests caught before the golfer could.** JSON has no NaN, so a
+frame series holding raw NaN cannot be encoded and `record()` would have
+dropped it silently — exactly the empty-frame case this exists to capture.
+Production is safe because `FrameSeries.fromFeatures` maps NaN to null, and the
+test now goes through that path rather than constructing a series production
+never builds. The second was mine: the "unwritable log" test passed a deleted
+directory, which `record()` simply recreates.
+
+**Still open, and unchanged by any of this:** all three localizers invent a
+swing in the 2026-08-17 nothing-clip. Catching an empty frame is not the same
+as knowing whether a person in frame swung, and the gate still cannot tell.
+That needs negatives of the second kind — someone in frame, not swinging — and
+now the app will keep them instead of throwing them away.
+
 #### P1.4 — STANCE-BOUNDED SEARCH PASSES THE NECESSARY CONDITION (2026-08-20)
 
 Every localization failure on record happens **outside the stance**. Filming

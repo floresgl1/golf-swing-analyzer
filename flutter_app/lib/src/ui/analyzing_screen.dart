@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../analysis/measurement_basis.dart';
+import '../analysis/rejection_log.dart';
 import '../analysis/swing_history.dart';
 import '../analysis/swing_history_store.dart';
 import '../models/drill.dart';
@@ -88,6 +90,10 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
   }
 
   Future<void> _run() async {
+    // Declared outside the try so the rejection path can still name the clip:
+    // a rejected swing is only useful as a corpus record if it says which
+    // video it came from.
+    StoredClip? clip;
     try {
       // Retain the recording BEFORE analyzing it, for two reasons. The clip
       // lives in a temp directory iOS reclaims on its own schedule, and a
@@ -95,7 +101,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
       // rewatch — the hard-fail path throws, so retaining afterwards would
       // lose exactly the clips worth keeping. Analysis then reads the retained
       // copy, so there is only ever one of a ~50 MB file on the phone.
-      final clip = await _retainClip();
+      clip = await _retainClip();
 
       final analysis = await _analyzer.analyze(
         clip?.path ?? widget.videoPath,
@@ -145,9 +151,41 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
         ),
       );
     } on SwingAnalysisException catch (e) {
+      // Keep the clip and everything measured from it. The golfer has already
+      // been told this was not a usable swing; the corpus still wants it,
+      // because a gate whose rejections are never recorded cannot be measured.
+      await _logRejection(e, clip?.name);
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
       if (mounted) setState(() => _error = 'Analysis failed: $e');
+    }
+  }
+
+  /// Record a swing the app refused to report on.
+  ///
+  /// These are the negatives P1.1 needs and the corpus was missing: before
+  /// 2026-08-20 a hard fail wrote nothing at all, so the only clips that ever
+  /// reached the corpus were the ones that passed the gate.
+  Future<void> _logRejection(SwingAnalysisException error, String? clipName) async {
+    if (error.reason == null) return; // not a rejection, a crash
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      await RejectionLog(
+        File(p.join(dir.path, 'swing_history_rejections.jsonl')),
+      ).record(RejectedSwing(
+        timestamp: DateTime.now(),
+        reason: error.reason!,
+        clipName: clipName,
+        fps: error.fps,
+        frameCount: error.frameCount,
+        poseCoverageFraction: error.poseCoverageFraction,
+        frames: error.frames,
+        participantId: widget.participantId,
+        captureSessionId: widget.captureSessionId,
+        appVersion: appVersion,
+      ));
+    } catch (_) {
+      // The golfer has already seen the message; a failed log helps nobody.
     }
   }
 
