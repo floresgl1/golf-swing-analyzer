@@ -47,7 +47,7 @@ class DrillTile extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  drill.difficulty,
+                  _capitalize(drill.difficulty),
                   style: TextStyle(
                     color: _difficultyColor(context),
                     fontSize: 11,
@@ -75,3 +75,6 @@ class DrillTile extends StatelessWidget {
     );
   }
 }
+
+String _capitalize(String s) =>
+    s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';

@@ -210,15 +210,15 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
   }
 
   String get _stageLabel => switch (_stage) {
-        AnalysisStage.extractingFrames => 'Extracting frames…',
-        AnalysisStage.detectingPose => 'Detecting body pose…',
-        AnalysisStage.computingReport => 'Measuring your swing…',
+        AnalysisStage.extractingFrames => 'Reading video…',
+        AnalysisStage.detectingPose => 'Finding your body…',
+        AnalysisStage.computingReport => 'Measuring…',
       };
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Analyzing')),
+      appBar: AppBar(title: const Text('Analyzing…')),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),

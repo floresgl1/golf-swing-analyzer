@@ -74,7 +74,7 @@ class GolfSwingApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Golf Swing Analyzer',
+      title: 'Fore Swing',
       debugShowCheckedModeBanner: false,
       theme: appTheme,
       darkTheme: appTheme,

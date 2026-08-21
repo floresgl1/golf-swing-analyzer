@@ -192,12 +192,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       }
     } catch (error) {
+      debugPrint('Share failed: origin=$origin screen=$screen error=$error');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 20),
-          content: Text('Export failed.\nsent origin: $origin\n'
-              'screen: $screen\n$error'),
+        const SnackBar(
+          content: Text('Share failed. Try again, or restart the app.'),
         ),
       );
     } finally {
@@ -259,13 +258,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const Divider(height: 32),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text('Send your swings', style: theme.textTheme.titleMedium),
+            child: Text('Share your swings', style: theme.textTheme.titleMedium),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
-              'Your swings are stored only on this phone and nothing is '
-              'uploaded. Use this to send the file yourself when asked for it.',
+              'Swings stay on this phone — nothing is uploaded. '
+              'Use this to share the file when you\'re ready.',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -275,7 +274,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               key: _exportButtonKey,
               onPressed: _exporting ? null : _export,
               icon: const Icon(Icons.ios_share),
-              label: Text(_exporting ? 'Preparing…' : 'Export swing history'),
+              label: Text(_exporting ? 'Preparing…' : 'Share swing history'),
             ),
           ),
           const Divider(height: 32),
