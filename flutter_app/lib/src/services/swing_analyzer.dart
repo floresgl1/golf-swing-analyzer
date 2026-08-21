@@ -209,32 +209,41 @@ class SwingAnalyzer {
         id: faultHeadSway,
         label: faultLabels[faultHeadSway]!,
         flagged: head.flagged,
-        detail: 'Lateral sway ${_fmt(head.lateral)} torso-lengths '
-            '(beta reference ${_fmt(swayThreshold)}). '
-            'Vertical dip ${_fmt(head.vertical)} — informational.',
+        measured: head.lateral,
+        reference: swayThreshold,
+        detail: 'Moved ${_fmt(head.lateral)} sideways '
+            '(ref ${_fmt(swayThreshold)}). '
+            'Vertical dip ${_fmt(head.vertical)}.',
       ),
       FaultVerdict(
         id: faultReversePivot,
         label: faultLabels[faultReversePivot]!,
         flagged: pivot.flagged,
-        detail: 'Spine lean ${_fmtSigned(pivot.reverse)} torso-lengths toward '
-            'target (beta reference ${_fmt(reversePivotThreshold)}).',
+        measured: pivot.reverse,
+        reference: reversePivotThreshold,
+        detail: 'Spine leaned ${_fmtSigned(pivot.reverse)} toward target '
+            '(ref ${_fmt(reversePivotThreshold)}).',
       ),
       FaultVerdict(
         id: faultEarlyExtension,
         label: faultLabels[faultEarlyExtension]!,
         flagged: extension.flagged,
-        detail: 'Pelvis rise ${_fmtSigned(extension.rise)} torso-lengths '
-            '(beta reference ${_fmt(earlyExtensionThreshold)}).',
+        measured: extension.rise,
+        reference: earlyExtensionThreshold,
+        detail: 'Hips rose ${_fmtSigned(extension.rise)} during downswing '
+            '(ref ${_fmt(earlyExtensionThreshold)}).',
       ),
       FaultVerdict(
         id: faultLossOfPosture,
         label: faultLabels[faultLossOfPosture]!,
         flagged: posture.flagged,
-        detail: 'Spine tilt ${_fmtDeg(posture.tiltAddress)} → '
-            '${_fmtDeg(posture.tiltImpact)} '
-            '(straightened ${_fmtSignedDeg(posture.straighten)}, '
-            'beta reference ${_fmtDeg(postureThreshold)}).',
+        measured: posture.straighten,
+        reference: postureThreshold,
+        isAngle: true,
+        detail: 'Spine ${_fmtDeg(posture.tiltAddress)} → '
+            '${_fmtDeg(posture.tiltImpact)}, '
+            '${_fmtSignedDeg(posture.straighten)} change '
+            '(ref ${_fmtDeg(postureThreshold)}).',
       ),
     ];
 

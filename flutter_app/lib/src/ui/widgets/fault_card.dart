@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../models/swing_analysis.dart';
 import '../theme/app_theme.dart';
+import 'measurement_gauge.dart';
 
 /// A single fault measurement: a status chip, the measured detail, and (when
 /// flagged) the drills that target it nested beneath it.
 ///
 /// Presentation is deliberately tentative — the thresholds behind [flagged] are
-/// unvalidated, so a flagged fault reads as "possible", not as a finding.
+/// unvalidated, so the badge reads "Possible", not "Confirmed".
 class FaultCard extends StatelessWidget {
   const FaultCard({
     super.key,
@@ -70,7 +71,7 @@ class FaultCard extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  flagged ? Icons.info_outline : Icons.remove_circle_outline,
+                  flagged ? Icons.info_outline : Icons.check_circle_outline,
                   color: statusColor,
                 ),
                 Gap.hsm,
@@ -88,10 +89,10 @@ class FaultCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    flagged ? 'POSSIBLE' : 'NOT SEEN',
+                    flagged ? 'Possible' : 'Not flagged',
                     style: TextStyle(
                       color: statusColor,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                       fontSize: 12,
                     ),
                   ),
@@ -101,6 +102,13 @@ class FaultCard extends StatelessWidget {
             Gap.sm,
             Text(verdict.detail,
                 style: Theme.of(context).textTheme.bodyMedium),
+            if (verdict.measured != null && verdict.reference != null)
+              MeasurementGauge(
+                measured: verdict.measured!,
+                reference: verdict.reference!,
+                flagged: verdict.flagged,
+                isAngle: verdict.isAngle,
+              ),
             if (drills.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text('Try these drills',
