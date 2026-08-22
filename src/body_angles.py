@@ -67,6 +67,7 @@ def main():
     fps = result.fps
     width, height = result.width, result.height
     wrist_y = result.wrist_y()
+    torso, loc_hip_x = result.localization_series()
 
     # Extract shoulder and hip line vectors (pixels), y negated so "up" is positive
     sx, sy, hx, hy = [], [], [], []
@@ -86,7 +87,7 @@ def main():
             sx.append(np.nan); sy.append(np.nan)
             hx.append(np.nan); hy.append(np.nan)
 
-    phases = detect_phases(wrist_y)
+    phases = detect_phases(wrist_y, fps=fps, torso=torso, hip_x=loc_hip_x)
 
     # Raw (per-frame) angles for reference, and the smoothed signals
     raw_shoulder = _fold(np.degrees(np.arctan2(sy, sx)))

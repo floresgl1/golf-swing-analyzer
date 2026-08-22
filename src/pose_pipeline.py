@@ -8,12 +8,22 @@ loop so a bug fix or a new series to collect happens in one place.
 The test copy in tests/test_pose_estimation.py is deliberately separate
 (see its docstring) and is NOT a consumer of this module.
 """
+import math
+
 import cv2
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
 from swing_phases import require_valid_fps, LEAD_WRIST
+
+# MediaPipe landmark indices for the shoulder/hip midpoints used by
+# localization_series(). Defined here rather than imported from faults.py
+# so the pipeline module stays self-contained.
+LEFT_SHOULDER = 11
+RIGHT_SHOULDER = 12
+LEFT_HIP = 23
+RIGHT_HIP = 24
 
 DEFAULT_MODEL = 'data/pose_landmarker.task'
 
@@ -50,6 +60,26 @@ class PoseResult:
             lm[LEAD_WRIST].y if lm is not None else float('nan')
             for lm in self.landmarks
         ]
+
+    def localization_series(self):
+        """Torso length and hip-midpoint x, both in pixels, per frame.
+
+        These are the two series ``detect_phases`` needs (beyond ``wrist_y``)
+        for stance-bounded localization.  nan where no pose was detected.
+        """
+        torso, hip_x = [], []
+        for lm in self.landmarks:
+            if lm is not None:
+                sx = (lm[LEFT_SHOULDER].x + lm[RIGHT_SHOULDER].x) / 2 * self.width
+                sy = (lm[LEFT_SHOULDER].y + lm[RIGHT_SHOULDER].y) / 2 * self.height
+                hx = (lm[LEFT_HIP].x + lm[RIGHT_HIP].x) / 2 * self.width
+                hy = (lm[LEFT_HIP].y + lm[RIGHT_HIP].y) / 2 * self.height
+                torso.append(math.dist((sx, sy), (hx, hy)))
+                hip_x.append(hx)
+            else:
+                torso.append(float('nan'))
+                hip_x.append(float('nan'))
+        return torso, hip_x
 
 
 def run_pose_detection(video_path, model_path=DEFAULT_MODEL):

@@ -1598,13 +1598,12 @@ fps for all real-time clips (device recordings). For the slow-mo calibration
 clip it differs, and the localization windows will be lighter; that is the same
 `container fps ≠ capture fps` seam already documented. 93 tests pass.
 
-**Still on peak localization (four other scripts):** `phase_montage.py:71`,
-`swing_phases.py:492`, `body_angles.py:114`, `pose_estimation.py:111` — all
-call bare `detect_phases(wrist_y)`. These scripts only collect `wrist_y`, so
-threading `torso` and `hip_x` means extending each script's detection loop.
-Now that the pose loops are consolidated into `pose_pipeline.py` (see below),
-the full landmark cache is available — extending the extraction is trivial.
-Fix with P0.2.
+**~~Still on peak localization (four other scripts)~~ — UPGRADED 2026-08-22:**
+`phase_montage.py`, `swing_phases.py`, `body_angles.py`, and
+`pose_estimation.py` now call
+`detect_phases(wrist_y, fps=fps, torso=torso, hip_x=hip_x)` via
+`result.localization_series()` from `pose_pipeline.py`. All four scripts use
+stance-bounded localization (12/14), same as `faults.py`. 95 tests pass.
 
 #### Five duplicated pose-detection loops in `src/` — CONSOLIDATED 2026-08-22
 

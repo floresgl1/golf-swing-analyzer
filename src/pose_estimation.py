@@ -68,9 +68,10 @@ def main():
     fps = result.fps
     width = result.width
     height = result.height
+    torso, hip_x = result.localization_series()
 
     # ---- Detect the swing phases from the collected trajectory ----
-    phases = detect_phases(wrist_y)
+    phases = detect_phases(wrist_y, fps=fps, torso=torso, hip_x=hip_x)
 
     # ---- Pass 2: redraw the skeleton, burn in the phase label, and write the video ----
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
