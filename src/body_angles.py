@@ -1,3 +1,5 @@
+import sys
+
 import matplotlib.pyplot as plt
 import numpy as np
 import math
@@ -29,10 +31,16 @@ def line_angle(p1, p2):
 
 
 def _fold(a):
-    """Fold an angle (deg) into [-90, 90] so a line and its reverse match."""
+    """Fold an angle (deg) into [-90, 90] so a line and its reverse match.
+
+    The ``<=`` on the -90 boundary means exactly-vertical lines always
+    return +90 regardless of point order.  The choice is arbitrary —
+    see Architecture Notes in ROADMAP.md — but the invariant ("tilt
+    regardless of point order") now holds unconditionally.
+    """
     a = np.asarray(a, dtype=float)
     a = np.where(a > 90, a - 180, a)
-    a = np.where(a < -90, a + 180, a)
+    a = np.where(a <= -90, a + 180, a)
     return a if a.ndim else float(a)
 
 
@@ -62,11 +70,13 @@ def smooth_line_angles(vx, vy, w=9):
 
 
 def main():
+    handedness = 'left' if '--left' in sys.argv else 'right'
+
     from pose_pipeline import run_pose_detection
     result = run_pose_detection(VIDEO_PATH)
     fps = result.fps
     width, height = result.width, result.height
-    wrist_y = result.wrist_y()
+    wrist_y = result.wrist_y(handedness)
     torso, loc_hip_x = result.localization_series()
 
     # Extract shoulder and hip line vectors (pixels), y negated so "up" is positive

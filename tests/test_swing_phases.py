@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 
 from swing_phases import (detect_phases, implausible_swing, swing_tempo,
-                          require_valid_fps)
+                          require_valid_fps, lead_wrist_for, lead_side_for,
+                          LEFT_WRIST, RIGHT_WRIST)
 
 
 def _synthetic_wrist_y():
@@ -71,6 +72,16 @@ def test_swing_tempo_none_when_fps_zero():
 
 def test_swing_tempo_none_without_phases():
     assert swing_tempo(None, fps=30) is None
+
+
+def test_lead_wrist_for_returns_correct_index():
+    assert lead_wrist_for('right') == LEFT_WRIST   # lead hand is left for a righty
+    assert lead_wrist_for('left') == RIGHT_WRIST   # lead hand is right for a lefty
+
+
+def test_lead_side_for_returns_correct_label():
+    assert lead_side_for('right') == 'Left'
+    assert lead_side_for('left') == 'Right'
 
 
 def test_require_valid_fps_accepts_positive():

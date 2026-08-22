@@ -1,3 +1,5 @@
+import sys
+
 import cv2
 import matplotlib.pyplot as plt
 
@@ -26,10 +28,12 @@ def draw_skeleton(frame, landmarks):
 
 
 def main():
+    handedness = 'left' if '--left' in sys.argv else 'right'
+
     from pose_pipeline import run_pose_detection
     result = run_pose_detection(VIDEO_PATH)
     per_frame_landmarks = result.landmarks
-    wrist_y = result.wrist_y()
+    wrist_y = result.wrist_y(handedness)
     fps = result.fps
     torso, hip_x = result.localization_series()
 

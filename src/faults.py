@@ -215,11 +215,23 @@ def _ipt(p):
     return (int(p[0]), int(p[1]))
 
 
+def _parse_args():
+    """Parse ``--left`` and an optional fault-targeting id from sys.argv."""
+    handedness = 'right'
+    targeting = None
+    for arg in sys.argv[1:]:
+        if arg == '--left':
+            handedness = 'left'
+        elif targeting is None:
+            targeting = arg
+    return handedness, targeting
+
+
 def main():
+    handedness, targeting = _parse_args()
     # Optional CLI arg: the fault id the golfer is practicing against this
     # session (e.g. `python src/faults.py head_sway`). Recorded in the swing
     # history so the next comparison can call out whether the focus paid off.
-    targeting = sys.argv[1] if len(sys.argv) > 1 else None
     if targeting and targeting not in FAULT_METRICS:
         print(f"Unknown fault id '{targeting}' -- valid ids: "
               f"{', '.join(FAULT_METRICS)}. Not recording a focus fault.")
@@ -241,7 +253,7 @@ def main():
     # the four detector functions.
     fps = result.fps
     width, height = result.width, result.height
-    wrist_y = result.wrist_y()
+    wrist_y = result.wrist_y(handedness)
 
     # Extract the series the four detectors need from the cached landmarks.
     eye_x, eye_y, sh_x, sh_y, hip_x, hip_y, torso = ([] for _ in range(7))

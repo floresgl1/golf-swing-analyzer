@@ -59,7 +59,8 @@ CASES = [
     ("horizontal_offset_reversed", (300.0, 50.0), (100.0, 50.0), 0.0),
 
     # --- vertical (y grows downward, so p2 below p1 == "downward") ---
-    ("vertical_downward_on_screen", (0.0, 0.0), (0.0, 10.0), -90.0),
+    # Both directions now return +90 after the _fold boundary fix (<=  -90).
+    ("vertical_downward_on_screen", (0.0, 0.0), (0.0, 10.0), 90.0),
     ("vertical_upward_on_screen", (0.0, 10.0), (0.0, 0.0), 90.0),
 
     # --- diagonals ---
@@ -97,7 +98,7 @@ REVERSAL_CASES = [
     ("horizontal", (0.0, 0.0), (10.0, 0.0), -0.0, 0.0),
     ("diagonal_falling", (0.0, 0.0), (10.0, 10.0), -45.0, -45.0),
     ("diagonal_rising", (0.0, 10.0), (10.0, 0.0), 45.0, 45.0),
-    ("vertical", (0.0, 0.0), (0.0, 10.0), -90.0, 90.0),
+    ("vertical", (0.0, 0.0), (0.0, 10.0), 90.0, 90.0),
 ]
 
 
@@ -121,20 +122,17 @@ def test_line_angle_point_order_captured(p1, p2, forward, reversed_):
     assert line_angle(p2, p1) == reversed_
 
 
-def test_line_angle_vertical_reversal_is_asymmetric_today():
-    """Isolate the vertical point-order asymmetry so it is impossible to miss.
+def test_line_angle_vertical_reversal_is_symmetric():
+    """Vertical lines return the same angle regardless of point order.
 
-    CAPTURED, UNVERIFIED: this test asserts that the two directions
-    currently DISAGREE. If a human decides the docstring's
-    order-independence claim should hold at the +/-90 boundary, this test
-    is the one that should start failing, and it should then be rewritten
-    by that human -- not silently deleted.
+    VERIFIED: the _fold boundary fix (Option A, `<= -90`) resolved the
+    asymmetry this test previously pinned. Both directions now return +90.
     """
     down = line_angle((0.0, 0.0), (0.0, 10.0))
     up = line_angle((0.0, 10.0), (0.0, 0.0))
-    assert down == -90.0
+    assert down == 90.0
     assert up == 90.0
-    assert down != up
+    assert down == up
 
 
 # ---------------------------------------------------------------------------
