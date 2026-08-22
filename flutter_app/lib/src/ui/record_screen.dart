@@ -1,33 +1,34 @@
+import 'dart:async';
+import 'dart:ui' show FontFeature;
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../analysis/participant.dart';
 import '../analysis/swing_history.dart';
 import '../models/drill.dart';
 import 'analyzing_screen.dart';
-import 'profile_screen.dart';
 import 'theme/app_theme.dart';
 
-/// First screen: preview the camera and record a swing. When recording stops,
-/// hands the video file off to the analysis screen ("record then analyze").
+/// First screen: full-bleed camera viewfinder with a circular shutter button,
+/// focus picker, framing guide, and elapsed timer. When recording stops, hands
+/// the clip to the analysis screen ("record then analyze").
 class RecordScreen extends StatefulWidget {
   const RecordScreen({
     super.key,
     required this.drills,
     required this.cameras,
     required this.participant,
-    required this.participantStore,
     required this.captureSession,
   });
 
   final List<Drill> drills;
   final List<CameraDescription> cameras;
 
-  /// The anonymous local golfer these swings belong to.
+  /// The anonymous local golfer these swings belong to. Updated by the shell
+  /// when Profile saves changes, so [didUpdateWidget] picks up the latest.
   final Participant participant;
-
-  /// Null when device storage was unavailable at startup.
-  final ParticipantStore? participantStore;
 
   /// Groups every swing recorded in this run of the app.
   final CaptureSession captureSession;
@@ -54,14 +55,23 @@ class _RecordScreenState extends State<RecordScreen> {
   /// not silently revert to right-handed for a lefty who set it last week.
   late Handedness _handedness;
 
-  /// Whether this is a natural swing or a deliberately exaggerated one recorded
-  /// as a labelled positive control.
-  SwingKind _swingKind = SwingKind.natural;
+  /// Derived from the participant's calibration mode — set in Profile, read
+  /// here. No longer local state: the ROADMAP requires the calibration
+  /// controls off the viewfinder and behind a Profile toggle.
+  SwingKind get _swingKind => widget.participant.calibrationMode
+      ? SwingKind.calibration
+      : SwingKind.natural;
 
-  /// The fault being deliberately exaggerated on a calibration swing.
-  String _calibrationFault = faultIds.first;
+  String get _calibrationFault =>
+      widget.participant.calibrationFault ?? faultIds.first;
 
-  late Participant _participant = widget.participant;
+  /// Elapsed recording timer.
+  Timer? _elapsedTimer;
+  Duration _elapsed = Duration.zero;
+
+  /// Self-timer countdown. Null when not counting down.
+  int? _selfTimerRemaining;
+  Timer? _selfTimer;
 
   @override
   void initState() {
@@ -72,34 +82,12 @@ class _RecordScreenState extends State<RecordScreen> {
     }
   }
 
-  Future<void> _setHandedness(Handedness value) async {
-    setState(() => _handedness = value);
-    final store = widget.participantStore;
-    if (store == null) return;
-    try {
-      final saved = await store.setHandedness(value);
-      if (mounted) setState(() => _participant = saved);
-    } catch (_) {
-      // Failing to remember the choice must not block recording with it.
-    }
-  }
-
-  Future<void> _openProfile() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ProfileScreen(
-          participant: _participant,
-          store: widget.participantStore,
-        ),
-      ),
-    );
-    final store = widget.participantStore;
-    if (store == null) return;
-    try {
-      final refreshed = await store.loadOrCreate();
-      if (mounted) setState(() => _participant = refreshed);
-    } catch (_) {
-      // Keep the in-memory copy.
+  @override
+  void didUpdateWidget(covariant RecordScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.participant.id != widget.participant.id) {
+      // Participant changed (e.g. Profile saved) — pick up new handedness.
+      _handedness = widget.participant.handedness ?? _handedness;
     }
   }
 
@@ -116,175 +104,343 @@ class _RecordScreenState extends State<RecordScreen> {
 
   @override
   void dispose() {
+    _elapsedTimer?.cancel();
+    _selfTimer?.cancel();
     _controller?.dispose();
     super.dispose();
   }
 
-  Future<void> _toggleRecording() async {
+  void _startElapsedTimer() {
+    _elapsed = Duration.zero;
+    _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _elapsed += const Duration(seconds: 1));
+    });
+  }
+
+  void _stopElapsedTimer() {
+    _elapsedTimer?.cancel();
+    _elapsedTimer = null;
+  }
+
+  String get _elapsedLabel {
+    final minutes = _elapsed.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = _elapsed.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  /// Start a 3-second countdown before recording begins. Gives the golfer time
+  /// to step back from the phone.
+  void _startSelfTimer() {
+    setState(() => _selfTimerRemaining = 3);
+    HapticFeedback.mediumImpact();
+    _selfTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      final remaining = (_selfTimerRemaining ?? 0) - 1;
+      if (remaining <= 0) {
+        timer.cancel();
+        setState(() => _selfTimerRemaining = null);
+        _startRecording();
+      } else {
+        HapticFeedback.lightImpact();
+        setState(() => _selfTimerRemaining = remaining);
+      }
+    });
+  }
+
+  void _cancelSelfTimer() {
+    _selfTimer?.cancel();
+    _selfTimer = null;
+    if (mounted) setState(() => _selfTimerRemaining = null);
+  }
+
+  Future<void> _startRecording() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    await controller.startVideoRecording();
+    HapticFeedback.heavyImpact();
+    _startElapsedTimer();
+    setState(() => _isRecording = true);
+  }
+
+  Future<void> _stopRecording() async {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
 
-    if (_isRecording) {
-      final file = await controller.stopVideoRecording();
-      setState(() => _isRecording = false);
-      if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => AnalyzingScreen(
-            videoPath: file.path,
-            drills: widget.drills,
-            handedness: _handedness,
-            targeting: _targeting,
-            participantId: _participant.id,
-            captureSessionId: widget.captureSession.id,
-            swingKind: _swingKind,
-            calibrationFault: _calibrationFault,
-          ),
+    final file = await controller.stopVideoRecording();
+    HapticFeedback.heavyImpact();
+    _stopElapsedTimer();
+    setState(() => _isRecording = false);
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AnalyzingScreen(
+          videoPath: file.path,
+          drills: widget.drills,
+          handedness: _handedness,
+          targeting: _targeting,
+          participantId: widget.participant.id,
+          captureSessionId: widget.captureSession.id,
+          swingKind: _swingKind,
+          calibrationFault: _calibrationFault,
         ),
-      );
-    } else {
-      await controller.startVideoRecording();
-      setState(() => _isRecording = true);
+      ),
+    );
+  }
+
+  void _onShutterTap() {
+    if (_selfTimerRemaining != null) {
+      _cancelSelfTimer();
+      return;
     }
+    if (_isRecording) {
+      _stopRecording();
+    } else {
+      _startRecording();
+    }
+  }
+
+  void _onSelfTimerTap() {
+    if (_selfTimerRemaining != null) {
+      _cancelSelfTimer();
+      return;
+    }
+    if (_isRecording) return;
+    _startSelfTimer();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.cameras.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Record')),
+        body: const _NoCameraMessage(),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Record your swing'),
-        actions: [
-          IconButton(
-            tooltip: 'Profile and export',
-            icon: const Icon(Icons.person_outline),
-            onPressed: _openProfile,
-          ),
-        ],
+      // Edge-to-edge: no AppBar, camera fills the screen.
+      extendBodyBehindAppBar: true,
+      body: FutureBuilder<void>(
+        future: _initFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Text('Camera error: ${snapshot.error}'),
+            );
+          }
+          return _ViewfinderLayout(
+            controller: _controller!,
+            isRecording: _isRecording,
+            selfTimerRemaining: _selfTimerRemaining,
+            elapsed: _elapsedLabel,
+            targeting: _targeting,
+            onTargetingChanged: _isRecording
+                ? null
+                : (value) => setState(() => _targeting = value),
+            onShutterTap: _onShutterTap,
+            onSelfTimerTap: _onSelfTimerTap,
+          );
+        },
       ),
-      body: widget.cameras.isEmpty
-          ? const _NoCameraMessage()
-          : FutureBuilder<void>(
-              future: _initFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text('Camera error: ${snapshot.error}'),
-                  );
-                }
-                return _CameraPreviewWithHint(
-                  controller: _controller!,
-                  targeting: _targeting,
-                  onTargetingChanged: _isRecording
-                      ? null
-                      : (value) => setState(() => _targeting = value),
-                  handedness: _handedness,
-                  onHandednessChanged: _isRecording ? null : _setHandedness,
-                  swingKind: _swingKind,
-                  onSwingKindChanged: _isRecording
-                      ? null
-                      : (value) => setState(() => _swingKind = value),
-                  calibrationFault: _calibrationFault,
-                  onCalibrationFaultChanged: _isRecording
-                      ? null
-                      : (value) => setState(() => _calibrationFault = value),
-                );
-              },
-            ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: widget.cameras.isEmpty
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _toggleRecording,
-              backgroundColor: _isRecording
-                  ? SwingColors.of(context).drillAdvanced
-                  : null,
-              icon: Icon(_isRecording ? Icons.stop : Icons.fiber_manual_record),
-              label: Text(_isRecording ? 'Stop & analyze' : 'Record'),
-            ),
     );
   }
 }
 
-class _CameraPreviewWithHint extends StatelessWidget {
-  const _CameraPreviewWithHint({
+// ---------------------------------------------------------------------------
+// Viewfinder layout — camera + overlays
+// ---------------------------------------------------------------------------
+
+class _ViewfinderLayout extends StatelessWidget {
+  const _ViewfinderLayout({
     required this.controller,
+    required this.isRecording,
+    required this.selfTimerRemaining,
+    required this.elapsed,
     required this.targeting,
     required this.onTargetingChanged,
-    required this.handedness,
-    required this.onHandednessChanged,
-    required this.swingKind,
-    required this.onSwingKindChanged,
-    required this.calibrationFault,
-    required this.onCalibrationFaultChanged,
+    required this.onShutterTap,
+    required this.onSelfTimerTap,
   });
 
   final CameraController controller;
+  final bool isRecording;
+  final int? selfTimerRemaining;
+  final String elapsed;
   final String? targeting;
-
-  /// Called when the golfer picks a focus fault; null disables the picker (e.g.
-  /// while recording).
   final ValueChanged<String?>? onTargetingChanged;
-
-  final Handedness handedness;
-
-  /// Called when the golfer picks their handedness; null disables the control.
-  final ValueChanged<Handedness>? onHandednessChanged;
-
-  final SwingKind swingKind;
-  final ValueChanged<SwingKind>? onSwingKindChanged;
-
-  final String calibrationFault;
-  final ValueChanged<String>? onCalibrationFaultChanged;
+  final VoidCallback onShutterTap;
+  final VoidCallback onSelfTimerTap;
 
   @override
   Widget build(BuildContext context) {
+    final sc = SwingColors.of(context);
     return Stack(
       fit: StackFit.expand,
       children: [
-        CameraPreview(controller),
+        // Camera preview — center-cropped to the screen aspect ratio.
+        //
+        // CameraPreview wraps an AspectRatio, which cannot honor its ratio
+        // under the tight constraints a non-positioned Stack child receives.
+        // Without this fix the preview stretches to the screen shape, which
+        // distorts what the golfer frames against — a measurement-quality
+        // issue, not a cosmetic one. FittedBox.cover sizes the child at its
+        // natural ratio and then scales + center-crops to fill the parent.
+        //
+        // previewSize is reported in landscape orientation by the camera
+        // plugin, so width↔height are swapped for portrait display.
+        Positioned.fill(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(
+              width: controller.value.previewSize?.height ?? 1,
+              height: controller.value.previewSize?.width ?? 1,
+              child: CameraPreview(controller),
+            ),
+          ),
+        ),
+
+        // Framing guide overlay — always visible when not recording.
+        if (!isRecording && selfTimerRemaining == null)
+          const _FramingGuide(),
+
+        // Self-timer countdown overlay.
+        if (selfTimerRemaining != null)
+          _SelfTimerOverlay(remaining: selfTimerRemaining!),
+
+        // Top bar — profile button + instruction hint.
         Positioned(
-          left: 16,
-          right: 16,
-          top: 16,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Builder(builder: (context) {
-                final sc = SwingColors.of(context);
-                return Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: sc.scrim,
-                    borderRadius: BorderRadius.circular(8),
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (!isRecording && selfTimerRemaining == null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: sc.scrim,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        'Side-on, full body in frame',
+                        style: TextStyle(
+                            color: sc.onScrim,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  if (isRecording)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: sc.scrim,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: sc.drillAdvanced,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          Gap.hsm,
+                          Text(
+                            elapsed,
+                            style: TextStyle(
+                              color: sc.onScrim,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // Bottom control bar.
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    sc.scrim,
+                  ],
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Focus picker — only when not recording.
+                  if (!isRecording)
+                    _FocusPicker(
+                      value: targeting,
+                      onChanged: onTargetingChanged,
+                    ),
+                  if (!isRecording) Gap.md,
+                  // Shutter row: self-timer + shutter button + spacer.
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Self-timer button.
+                      SizedBox(
+                        width: 48,
+                        child: isRecording
+                            ? const SizedBox.shrink()
+                            : IconButton(
+                                tooltip: 'Self-timer',
+                                icon: Icon(Icons.timer,
+                                    color: sc.onScrim, size: 28),
+                                onPressed: onSelfTimerTap,
+                              ),
+                      ),
+                      Gap.hlg,
+                      // Circular shutter button.
+                      _ShutterButton(
+                        isRecording: isRecording,
+                        onTap: onShutterTap,
+                      ),
+                      Gap.hlg,
+                      // Balance the row.
+                      const SizedBox(width: 48),
+                    ],
                   ),
-                  child: Text(
-                    'Frame your whole body, down-the-line. Record one full swing, '
-                    'then tap stop to analyze.',
-                    style: TextStyle(color: sc.onScrim),
-                  ),
-                );
-              }),
-              Gap.sm,
-              _HandednessSelector(
-                value: handedness,
-                onChanged: onHandednessChanged,
+                ],
               ),
-              Gap.sm,
-              _SwingKindSelector(
-                value: swingKind,
-                onChanged: onSwingKindChanged,
-                calibrationFault: calibrationFault,
-                onCalibrationFaultChanged: onCalibrationFaultChanged,
-              ),
-              Gap.sm,
-              _TargetSelector(
-                value: targeting,
-                onChanged: onTargetingChanged,
-              ),
-            ],
+            ),
           ),
         ),
       ],
@@ -292,160 +448,166 @@ class _CameraPreviewWithHint extends StatelessWidget {
   }
 }
 
-/// Lets the golfer mark a swing as a deliberate, exaggerated example of one
-/// fault — a labelled positive control for the corpus.
-///
-/// These have to be distinguishable from natural swings: they are swings the
-/// detector is *supposed* to flag, so counting them among natural swings would
-/// make the false-positive rate look far better than it is.
-class _SwingKindSelector extends StatelessWidget {
-  const _SwingKindSelector({
-    required this.value,
-    required this.onChanged,
-    required this.calibrationFault,
-    required this.onCalibrationFaultChanged,
-  });
+// ---------------------------------------------------------------------------
+// Shutter button — circular, with a recording ring animation
+// ---------------------------------------------------------------------------
 
-  final SwingKind value;
-  final ValueChanged<SwingKind>? onChanged;
-  final String calibrationFault;
-  final ValueChanged<String>? onCalibrationFaultChanged;
+class _ShutterButton extends StatelessWidget {
+  const _ShutterButton({required this.isRecording, required this.onTap});
+
+  final bool isRecording;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final sc = SwingColors.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: sc.scrim,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.science_outlined, color: sc.onScrim, size: 18),
-              Gap.hsm,
-              Text('This swing is',
-                  style: TextStyle(color: sc.onScrim.withValues(alpha: 0.7))),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SegmentedButton<SwingKind>(
-                  segments: const [
-                    ButtonSegment(
-                        value: SwingKind.natural, label: Text('Normal')),
-                    ButtonSegment(
-                        value: SwingKind.calibration,
-                        label: Text('Exaggerated')),
-                  ],
-                  selected: {value},
-                  showSelectedIcon: false,
-                  onSelectionChanged: onChanged == null
-                      ? null
-                      : (selection) => onChanged!(selection.first),
-                ),
-              ),
-            ],
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: sc.onScrim,
+            width: 4,
           ),
-          if (value == SwingKind.calibration) ...[
-            Gap.xs,
-            Row(
-              children: [
-                const SizedBox(width: 26),
-                Text('Exaggerating',
-                    style: TextStyle(color: sc.onScrim.withValues(alpha: 0.7))),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: calibrationFault,
-                      isExpanded: true,
-                      dropdownColor: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest,
-                      iconEnabledColor: sc.onScrim,
-                      style: TextStyle(color: sc.onScrim),
-                      onChanged: onCalibrationFaultChanged == null
-                          ? null
-                          : (v) {
-                              if (v != null) onCalibrationFaultChanged!(v);
-                            },
-                      items: [
-                        for (final id in faultIds)
-                          DropdownMenuItem<String>(
-                            value: id,
-                            child: Text(faultLabels[id] ?? id),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
+        ),
+        padding: const EdgeInsets.all(4),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          decoration: BoxDecoration(
+            color: isRecording ? sc.drillAdvanced : sc.onScrim,
+            borderRadius:
+                BorderRadius.circular(isRecording ? 8 : 28),
+          ),
+          width: isRecording ? 28 : 56,
+          height: isRecording ? 28 : 56,
+        ),
       ),
     );
   }
 }
 
-/// Lets the golfer say which hand they swing with.
-///
-/// Not a preference: it selects the wrist the phase detector tracks, and every
-/// fault measurement and the tempo ratio are sampled at the frame indices that
-/// produces. Until this existed the app analyzed every golfer as right-handed.
-class _HandednessSelector extends StatelessWidget {
-  const _HandednessSelector({required this.value, required this.onChanged});
+// ---------------------------------------------------------------------------
+// Framing guide — CustomPainter silhouette + vertical alignment line
+// ---------------------------------------------------------------------------
 
-  final Handedness value;
-  final ValueChanged<Handedness>? onChanged;
+class _FramingGuide extends StatelessWidget {
+  const _FramingGuide();
 
   @override
   Widget build(BuildContext context) {
-    final sc = SwingColors.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: sc.scrim,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.sports_golf, color: sc.onScrim, size: 18),
-          Gap.hsm,
-          Text('I swing',
-              style: TextStyle(color: sc.onScrim.withValues(alpha: 0.7))),
-          const SizedBox(width: 12),
-          Expanded(
-            child: SegmentedButton<Handedness>(
-              segments: const [
-                ButtonSegment(
-                  value: Handedness.right,
-                  label: Text('Right-handed'),
-                ),
-                ButtonSegment(
-                  value: Handedness.left,
-                  label: Text('Left-handed'),
-                ),
-              ],
-              selected: {value},
-              showSelectedIcon: false,
-              onSelectionChanged: onChanged == null
-                  ? null
-                  : (selection) => onChanged!(selection.first),
-            ),
-          ),
-        ],
+    return IgnorePointer(
+      child: CustomPaint(
+        painter: _FramingGuidePainter(
+          color: SwingColors.of(context).onScrim.withValues(alpha: 0.25),
+        ),
+        size: Size.infinite,
       ),
     );
   }
 }
 
-/// Lets the golfer name the one fault they're working on this swing. Defaults
-/// to "Full swing check" (null), which runs the report with no focus.
-class _TargetSelector extends StatelessWidget {
-  const _TargetSelector({required this.value, required this.onChanged});
+class _FramingGuidePainter extends CustomPainter {
+  _FramingGuidePainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+
+    final centerX = size.width * 0.5;
+
+    // Vertical alignment line — helps the golfer center themselves.
+    canvas.drawLine(
+      Offset(centerX, size.height * 0.1),
+      Offset(centerX, size.height * 0.9),
+      paint,
+    );
+
+    // Simplified golfer silhouette — head, torso, stance.
+    final headCenterY = size.height * 0.22;
+    const headRadius = 14.0;
+
+    // Head
+    canvas.drawCircle(Offset(centerX, headCenterY), headRadius, paint);
+
+    // Shoulders
+    final shoulderY = headCenterY + headRadius + 6;
+    canvas.drawLine(
+      Offset(centerX - 24, shoulderY),
+      Offset(centerX + 24, shoulderY),
+      paint,
+    );
+
+    // Torso
+    final hipY = shoulderY + 50;
+    canvas.drawLine(Offset(centerX, shoulderY), Offset(centerX, hipY), paint);
+
+    // Hips
+    canvas.drawLine(
+      Offset(centerX - 18, hipY),
+      Offset(centerX + 18, hipY),
+      paint,
+    );
+
+    // Legs — slight stance width
+    final footY = hipY + 55;
+    canvas.drawLine(
+        Offset(centerX - 18, hipY), Offset(centerX - 22, footY), paint);
+    canvas.drawLine(
+        Offset(centerX + 18, hipY), Offset(centerX + 22, footY), paint);
+
+    // Feet
+    canvas.drawLine(Offset(centerX - 22, footY),
+        Offset(centerX - 22 - 8, footY), paint);
+    canvas.drawLine(Offset(centerX + 22, footY),
+        Offset(centerX + 22 + 8, footY), paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _FramingGuidePainter oldDelegate) =>
+      color != oldDelegate.color;
+}
+
+// ---------------------------------------------------------------------------
+// Self-timer countdown overlay
+// ---------------------------------------------------------------------------
+
+class _SelfTimerOverlay extends StatelessWidget {
+  const _SelfTimerOverlay({required this.remaining});
+
+  final int remaining;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Center(
+        child: Text(
+          '$remaining',
+          style: TextStyle(
+            fontSize: 96,
+            fontWeight: FontWeight.w300,
+            color: SwingColors.of(context).onScrim.withValues(alpha: 0.7),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Focus picker — compact pill-style chips instead of a dropdown
+// ---------------------------------------------------------------------------
+
+class _FocusPicker extends StatelessWidget {
+  const _FocusPicker({required this.value, required this.onChanged});
 
   final String? value;
   final ValueChanged<String?>? onChanged;
@@ -453,48 +615,67 @@ class _TargetSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sc = SwingColors.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: sc.scrim,
-        borderRadius: BorderRadius.circular(8),
-      ),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          Icon(Icons.center_focus_strong, color: sc.onScrim, size: 18),
-          Gap.hsm,
-          Text('Working on',
-              style: TextStyle(color: sc.onScrim.withValues(alpha: 0.7))),
-          const SizedBox(width: 12),
-          Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String?>(
-                value: value,
-                isExpanded: true,
-                dropdownColor:
-                    Theme.of(context).colorScheme.surfaceContainerHighest,
-                iconEnabledColor: sc.onScrim,
-                style: TextStyle(color: sc.onScrim),
-                onChanged: onChanged,
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Full swing check'),
-                  ),
-                  for (final id in faultIds)
-                    DropdownMenuItem<String?>(
-                      value: id,
-                      child: Text(faultLabels[id] ?? id),
-                    ),
-                ],
-              ),
-            ),
+          _focusChip(
+            context: context,
+            label: 'Everything',
+            selected: value == null,
+            onTap: onChanged == null ? null : () => onChanged!(null),
+            sc: sc,
           ),
+          for (final id in faultIds) ...[
+            Gap.hsm,
+            _focusChip(
+              context: context,
+              label: faultLabels[id] ?? id,
+              selected: value == id,
+              onTap: onChanged == null ? null : () => onChanged!(id),
+              sc: sc,
+            ),
+          ],
         ],
       ),
     );
   }
+
+  Widget _focusChip({
+    required BuildContext context,
+    required String label,
+    required bool selected,
+    required VoidCallback? onTap,
+    required SwingColors sc,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? sc.focus.withValues(alpha: 0.85) : sc.scrim,
+          borderRadius: BorderRadius.circular(16),
+          border: selected
+              ? Border.all(color: sc.focus, width: 1.5)
+              : Border.all(color: sc.onScrim.withValues(alpha: 0.2)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? sc.onScrim : sc.onScrim.withValues(alpha: 0.7),
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+      ),
+    );
+  }
 }
+
+// ---------------------------------------------------------------------------
+// No-camera fallback
+// ---------------------------------------------------------------------------
 
 class _NoCameraMessage extends StatelessWidget {
   const _NoCameraMessage();
@@ -505,8 +686,7 @@ class _NoCameraMessage extends StatelessWidget {
       padding: EdgeInsets.all(24),
       child: Center(
         child: Text(
-          'No camera available on this device. A camera is required to record '
-          'and analyze a swing.',
+          'No camera found. Fore Swing needs a camera to record your swing.',
           textAlign: TextAlign.center,
         ),
       ),

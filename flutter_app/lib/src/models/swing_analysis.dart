@@ -7,15 +7,20 @@ import '../analysis/faults.dart';
 import '../analysis/swing_history.dart';
 import '../analysis/swing_phases.dart';
 import 'drill.dart';
+import 'key_frame.dart';
 
 /// A single fault's measurement plus a human-readable one-line detail, ready for
-/// the UI. Fault-specific numbers live in the detail string so the report screen
-/// stays generic.
+/// the UI.
 ///
 /// [flagged] means the measurement passed the detector's reference value — not
-/// that the fault is confirmed. The report presents it tentatively (see
-/// [tentativeLabel]) because the thresholds have not been validated against a
-/// real corpus yet.
+/// that the fault is confirmed. The badge in the UI carries that hedge
+/// ("Possible") so the label itself stays plain.
+///
+/// [measured] and [reference] are the raw numbers the gauge widget draws — the
+/// value that was compared to the threshold and the threshold itself. Both are
+/// torso-length fractions except for loss of posture, which is in degrees
+/// ([isAngle]). They are optional only because the model predates them; every
+/// verdict built by [SwingAnalyzer] populates them.
 class FaultVerdict {
   /// One of the fault ids in `faults.dart` (e.g. [faultHeadSway]).
   final String id;
@@ -24,21 +29,32 @@ class FaultVerdict {
   final String label;
   final bool flagged;
 
-  /// One-line explanation with the measured value and threshold.
+  /// Short human-readable summary of what was measured.
   final String detail;
+
+  /// The absolute value compared to [reference] — what the gauge draws.
+  final double? measured;
+
+  /// The reference threshold the measurement is compared against.
+  final double? reference;
+
+  /// True when [measured] and [reference] are in degrees (loss of posture);
+  /// false for torso-length fractions.
+  final bool isAngle;
 
   const FaultVerdict({
     required this.id,
     required this.label,
     required this.flagged,
     required this.detail,
+    this.measured,
+    this.reference,
+    this.isAngle = false,
   });
 
-  /// The label as the report presents it: hedged while the thresholds are still
-  /// unvalidated, so a flagged fault reads as a possibility rather than a
-  /// finding. Plain [label] when nothing was flagged.
-  String get tentativeLabel =>
-      flagged ? 'Possible ${label.toLowerCase()}' : label;
+  /// Plain label — the badge carries the tentative hedge ("Possible"), so the
+  /// title does not need to repeat it.
+  String get tentativeLabel => label;
 }
 
 class SwingAnalysis {
@@ -63,6 +79,10 @@ class SwingAnalysis {
   /// marks the report's focus and floats that fault to the top.
   final String? targeting;
 
+  /// Address, top, and impact stills preserved from the analysis pipeline.
+  /// Null when the frames could not be saved (storage error, missing frames).
+  final List<KeyFrame>? keyFrames;
+
   const SwingAnalysis({
     required this.phases,
     required this.tempo,
@@ -72,6 +92,7 @@ class SwingAnalysis {
     required this.recommendations,
     required this.session,
     this.targeting,
+    this.keyFrames,
   });
 
   bool get anyFlagged => faults.any((f) => f.flagged);

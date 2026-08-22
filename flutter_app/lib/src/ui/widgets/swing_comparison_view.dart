@@ -28,13 +28,11 @@ class SwingComparisonView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Last swing vs this swing',
+            Text('Last time → this time',
                 style: theme.textTheme.titleMedium),
             Gap.xs,
             Text(
-              'Compared with the session from '
-              '${previousDate.year}-${_two(previousDate.month)}-${_two(previousDate.day)} '
-              '${_two(previousDate.hour)}:${_two(previousDate.minute)}',
+              'Previous swing: ${_friendlyDate(previousDate)}',
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: 12),
@@ -46,7 +44,17 @@ class SwingComparisonView extends StatelessWidget {
     );
   }
 
-  static String _two(int n) => n.toString().padLeft(2, '0');
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  static String _friendlyDate(DateTime d) {
+    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    final m = d.minute.toString().padLeft(2, '0');
+    final ampm = d.hour < 12 ? 'am' : 'pm';
+    return '${_months[d.month - 1]} ${d.day}, $h:$m $ampm';
+  }
 }
 
 class _FaultRow extends StatelessWidget {

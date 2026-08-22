@@ -415,7 +415,17 @@ One ULP. It cannot change a verdict on any real swing — a golfer's spine angle
 - Test on both iOS and Android if possible
 - Address any ML Kit keypoint accuracy issues (may need threshold adjustments for mobile)
 
-#### P1.1 — The app cannot say "that wasn't a swing" (found on device 2026-08-17)
+#### P1.1 — The app cannot say "that wasn't a swing" (found on device 2026-08-17) — STILL OPEN
+
+**Status 2026-08-20: still open, now measured, and partly improved.** Six clips
+filmed to test the gate showed it is wrong in **both** directions — it rejected
+a real swing and accepted two clips containing no swing. Shipping the
+stance-bounded localization improved this without closing it: the app now
+declines a clip where the golfer never settled (1 of 3 negatives) instead of
+inventing a swing in it, but two negatives still get full reports. Read the
+three 2026-08-20 P1.1 sections below for the measurements. **Finding the swing
+and knowing whether there is one are different problems; no amount of work on
+the first closes the second.**
 
 **First real device test, first finding.** A video of *nothing* — no golfer, no
 swing — produced a complete report: a `POSSIBLE` head-sway verdict at 0.44
@@ -570,7 +580,30 @@ nothing but the filesystem. The share sheet remains, but a corpus P0.1 cannot
 proceed without should not have a single route off the device, and that route
 should not be the one with four builds of platform quirks behind it.
 
-#### P1.3 — `detect_phases` does not find the swing in a real phone clip (2026-08-17)
+#### P1.3 / P1.4 — READ IN THIS ORDER
+
+The sections below were written as the work happened and are therefore in the
+order they were *discovered*, not the order they make sense in. Several state
+conclusions that later sections falsify. **Read them in this order, and treat a
+later date as overriding an earlier one:**
+
+1. `P1.3` (2026-08-17) — the original failure, still accurate as a description
+   of `detect_phases`.
+2. `P1.4` (2026-08-17) — the first localization attempt. **Two of its
+   conclusions were later falsified by labels.** Kept for the reasoning.
+3. `P1.4 — FIRST MEASUREMENT AGAINST LABELS` (2026-08-20).
+4. `P1.4 — STANCE-BOUNDED SEARCH PASSES THE NECESSARY CONDITION` (2026-08-20).
+5. `P1.4 — STANCE-BOUNDED LOCALIZATION IS LIVE IN THE APP` (2026-08-20) — the
+   current state.
+6. `SCOREBOARD` (2026-08-20) — where every localization stands, and what is
+   still not established.
+
+**Current state in one line:** the app runs the stance-bounded localization
+(12/14 on labelled swings, declining 1 of 3 no-swing clips). What it ran before
+2026-08-20 scored 0/14. P1.1 — whether a clip contains a swing at all — is
+still open and is a different problem.
+
+#### P1.3 — `detect_phases` does not find the swing in a real phone clip (2026-08-17) — RESOLVED 2026-08-20
 
 **The first five real recordings are off the device, and they invalidate more
 than the gate.** Replaying `detect_phases` on the stored per-frame `wrist_y`:
@@ -626,7 +659,11 @@ corpus — the spec calls for multiple subjects and repeat sessions — but the
 first real data the project has, and the export path that produced it now
 works.
 
-#### P1.4 — Swing localization: prototyped, NOT shipped, blocked on ground truth (2026-08-17)
+#### P1.4 — Swing localization: prototyped, NOT shipped, blocked on ground truth (2026-08-17) — SUPERSEDED 2026-08-20
+
+**Status: the localization described here was replaced. Its `locate_swing` is
+now the *unbounded* form, measured at 2/14 against labels; the shipped path
+adds the stance bound. The two falsified claims are flagged inline below.**
 
 Filming yourself makes a long clip unavoidable: tripod, hit record, walk in,
 settle, swing, walk back, stop. **"Record a shorter clip" is not advice anyone
@@ -653,6 +690,13 @@ fastest downward wrist motion, not a tall peak. `locate_swing()` in
 `src/swing_phases.py` does this and puts the events *inside* the swing on all
 five recordings instead of at frame 1. Tempo ratios came out 3.00 / 2.42 /
 3.93 / 2.00 in one prototype — the right order of magnitude for real golfers.
+
+**SUPERSEDED 2026-08-20 — read the P1.4 sections dated 2026-08-20 below
+instead. Both claims in this paragraph were later falsified by labels: the
+smoothing constant is stable from 0.07 through 0.30 on checkable clips, and the
+unbounded method scores 2/14 rather than being "demonstrably better". The
+stance-bounded form now ships. This text is kept because the reasoning that
+produced a wrong conclusion is worth being able to re-read.**
 
 **It is not shipped, and here is why.** The answer moves with the smoothing
 constant. At `DESCENT_SMOOTH_S` 0.05 s one clip anchors at frame 447; at 0.10 s
@@ -725,6 +769,82 @@ with ordinary 0.08-0.17 motion on both sides. It is a pose discontinuity being
 read as the fastest descent in the clip. Every clip in the corpus carries a
 few: 3 to 19 jumps over 0.5 torso-lengths each.
 
+#### P1.4 — STANCE-BOUNDED LOCALIZATION IS LIVE IN THE APP (2026-08-20)
+
+Ported to Dart and wired in, on the golfer's decision after being shown that
+the evidence is two routines from one golfer on one phone.
+
+**What changed for a user.** `swing_analyzer.dart` now passes `torso` and
+`hipX` to `detectPhases`. The app previously ran peak localization, which
+scores **0/14** against device labels and anchored in the walk-in on every real
+clip ever measured. It now runs the stance-bounded search: **12/14**, and it
+declines one of the three no-swing clips instead of inventing a swing in it.
+
+**Verified as a port, not a rewrite.** `tests/fixtures/stance_parity_expected.json`
+holds the frame indices Python produces for all 20 committed device clips, and
+`stance_parity_test.dart` requires Dart to reproduce them **exactly**, including
+the clip Python declines. Exact rather than approximate: both sides interpolate
+the same gaps, smooth with the same odd-width kernel and take argmin/argmax over
+the same slices, so a one-frame drift means a helper diverged.
+
+**Verified as non-vacuous.** Six mutations of the Dart port, five caught by the
+corpus alone:
+
+```
+stance travel threshold widened            RED
+descent smoothing changed                  RED
+short-stance guard removed                 RED
+decline falls back to peak localization    RED
+stance bound not applied to the anchor     RED
+framesFor rounds odd DOWN not up           GREEN  <-- blind
+```
+
+The blind one is instructive: **every clip in the corpus is 29.97 fps**, where
+0.10 s rounds to 3 frames — already odd, so the odd-bump never fires. A corpus
+of one frame rate cannot test frame-rate handling. Closed with direct
+`framesFor` tests pinned to Python's values at 240, 60, 30 and 29.97 fps; the
+mutation now goes red. **240 fps is not hypothetical here — it is the rate the
+Dart windows were built for.**
+
+**Three app-level tests pin what a golfer meets**: the never-settled clip is
+rejected, a real swing is still accepted and located inside the swing, and the
+practice-swing clip is accepted *on the wrong swing* — recorded rather than
+hidden.
+
+**The risk that was checked before wiring.** A stricter gate can buy its
+declines by rejecting real swings. On all 14 labelled swings in the corpus the
+stance-bounded path declines **none**, so no false negative was introduced by
+this change. The one intermittent false negative on record predates it.
+
+**What is still not established, unchanged by shipping it:** two routines, one
+golfer, one phone, one camera position, 30 fps. Breadth is what is missing, and
+more swings from the same tester cannot supply it — a second tester would say
+more than another twenty clips from the first.
+
+#### SCOREBOARD (2026-08-20, 20 clips: 17 labelled, 3 negatives)
+
+```
+                    video labels   sheet labels   negatives declined
+detect_phases          0/10            0/4              0/3
+locate_swing           3/10            0/4              0/3
+stance_bounded         9/10            3/4              1/3
+```
+
+The single `stance_bounded` miss under video labels is the practice-swing clip,
+where it anchored on the practice swing rather than the real one. Every other
+video-labelled swing it finds, across two routines.
+
+**What is still not established.** Two routines, one golfer, one phone, one
+camera position, 30 fps. The negatives number three and only one is declined.
+And the practice-swing failure is not a tuning problem — a practice swing is a
+real swing inside the stance, so nothing in the signal separates it.
+
+**SHIPPED 2026-08-20.** The app now passes `torso` and `hip_x`, so its
+behaviour is the `stance_bounded` row. Until that change it was the
+`detect_phases` row — 0/14 on labelled swings, inventing a swing on all three
+negatives — which is what a golfer had been getting on every clip ever
+measured.
+
 #### P1.1 — THE GATE IS WRONG IN BOTH DIRECTIONS (2026-08-20)
 
 Six clips were filmed to test it: three varied swing routines and three
@@ -745,6 +865,42 @@ in some ways the worse one: the golfer did everything asked — side-on, whole
 body in frame, camera still — and was told *"that didn't look like a golf
 swing."* Being wrong in both directions at once means the gate is not
 mis-tuned; it is not measuring the thing it claims to measure.
+
+**Clip 1 filmed four more times (2026-08-20 18:50): all four accepted.** The
+false negative has now happened once in six attempts of the same routine and
+has not reproduced. Nothing can be said about what triggers it, and the one
+clip that could have said anything is the one whose data was discarded.
+
+**These four are the first varied-routine data the stance bound has faced.**
+Routine 1 is *walk in with the club already down*, which removes the distractor
+that beat `locate_swing` on 2026-08-19 — there is no club being lowered into
+address, because it was never raised. Stance windows and anchors:
+
+```
+clip                       stance        detect_phases  locate_swing  stance_bounded
+swing_..._185017.mp4     4.8-10.7s          0.1s          12.6s           7.8s
+swing_..._185042.mp4     4.5-10.5s          0.2s          11.4s           7.8s
+swing_..._185108.mp4     5.1-11.1s          0.0s           2.5s           8.5s
+swing_..._185134.mp4     5.0-10.9s          0.0s           7.6s           7.6s
+```
+
+Labelled by the golfer at ~7 s, all four: **`stance_bounded` finds all four,
+`locate_swing` finds one, `detect_phases` none.**
+
+**This is the first evidence for the stance bound that is not one routine
+measured repeatedly.** The six clips it originally cleared were the same
+walk-in-with-the-club-up routine six times; these four are a different setup,
+labelled from video, and it holds. That upgrades the earlier 6/6 from "passed
+a necessary condition" to "held on a routine it was not built against" — which
+is not the same as validated, and the difference is still worth keeping in
+view: two routines by one golfer on one phone.
+
+**Removing one distractor did not rescue the unbounded localizer**, which is
+the interesting part. With no club-lowering to catch, `locate_swing` moved its
+failures to **11.4 s and 12.6 s — the walk-away** instead of the walk-in. There
+is always another competing descent outside the stance; eliminating them one at
+a time is not a strategy, which is the argument for bounding rather than
+cleaning.
 
 **Clip 1 re-filmed 2026-08-20: the same routine was ACCEPTED.** Walk in with
 the club already down, set up, swing — rejected the first time, analyzed
@@ -916,10 +1072,13 @@ seconds" as one range for four clips, and that one swing came later. Recorded
 rather than corrected — changing a label because a detector disagrees with it
 is how ground truth stops being ground truth.
 
-**Not shipped, and still not reachable from the app.** `hip_x` is opt-in, the
-app passes neither `torso` nor `hip_x`, and behaviour is unchanged. **No Dart
-port**, deliberately: porting an unvalidated localizer would put it one call
-site away from a golfer.
+**Not shipped at the time this was written; SHIPPED later the same day** once
+the varied-routine clips held and the golfer chose to take it. `swing_phases.dart`
+now carries a byte-parallel port, `swing_analyzer.dart` passes `torso` and
+`hip_x`, and a parity fixture requires Dart to reproduce Python's frame indices
+exactly on all 20 committed clips. The caution in this paragraph was right for
+the evidence available when it was written — one routine, measured repeatedly —
+and what changed was the evidence, not the standard.
 
 **P1.1 is untouched by this.** The stance-bounded search still invents a swing
 in the nothing-clip (takeaway 3.5 s, top 3.7 s, impact 4.1 s, finish 4.6 s) —
@@ -954,7 +1113,9 @@ locate_swing           2/6            0/4        2/10
 **Both localizations are now refuted by measurement**, not by argument. This is
 the outcome the "NOT VALIDATED, NOT USED BY THE APP" guard on `locate_swing`
 existed for: it was never enabled, so nothing shipped on the strength of a
-number that turned out to be luck.
+number that turned out to be luck. (That guard was later lifted — but for the
+*stance-bounded* form, and only after it held on a routine it was not built
+against. The unbounded form described here never shipped and should not.)
 
 **The competing-descent story survives.** The three failures anchor at 2.07 s,
 4.04 s and 0.00 s — all in the walk-in, none in the swing. The pre-registered
@@ -1440,7 +1601,7 @@ The camera half is landed and green (run on `main` @ `067cab2`).
 - **Sharing**: export swing reports as images or PDFs for sharing with an instructor
 - **Onboarding**: guide for recording angle, distance, lighting for best results
 
-### Product voice — the app reads like it was generated, not written (2026-08-17)
+### ✅ Product voice — the app reads like it was generated, not written (2026-08-17)
 
 Raised after seeing the shipped screens on device. The app is *accurate* and
 *honest* and still reads like documentation. It has no voice, and a golfer can
@@ -1496,6 +1657,18 @@ measured — is tracked in **Front-end UI** immediately below. Neither pass
 fixes the other: rewriting every sentence in the app would leave it looking
 exactly as template-built as it does now.
 
+*Done 2026-08-21 (first pass).* Rewrote all five screens' copy to coach
+register. Fault details in `swing_analyzer.dart` changed from calibration
+readouts (`"Moved 0.44 sideways (ref 0.13)"`) to golfer-facing observations
+(`"Your head drifted from address to impact"`). The gauge still carries the
+numeric precision. Comparison arrows `->` → `→`, "torso-lengths" unit
+dropped from comparison text (gauge shows the value). Beta banner already
+compressed (prior session). Clean-swing banner, not-saved notice, profile
+section copy, diagnostics ID description, and tempo caveat tightened.
+All hedges preserved — the "Possible" badge and beta caveat carry the
+epistemic framing structurally. The copy will be revisited after P0.2
+recalibrates the thresholds.
+
 ### Front-end UI — it looks generated before it reads generated (2026-08-20)
 
 Companion to **Product voice** above, and meant to be read with it. That entry
@@ -1529,7 +1702,7 @@ A golfer reads all of that in about two seconds, before a single word.
 
 #### Tier 1 — highest impact, and none of it is gated on P0.2
 
-1. **One real theme file, and ban `Colors.*` from `src/ui/`.** A
+1. ✅ **One real theme file, and ban `Colors.*` from `src/ui/`.** A
    `lib/src/ui/theme/app_theme.dart` with a deliberate palette (a green that is
    not Material's stock `2E7D32`, a true near-black for camera surfaces, one
    accent), a type ramp, and **tabular figures for every measured value** —
@@ -1540,8 +1713,11 @@ A golfer reads all of that in about two seconds, before a single word.
    `drill_tile.dart:13-22` stop inventing colors and dark mode starts working
    as a side effect. Add `Gap.xs/sm/md/lg` (4/8/16/24) and delete the ad-hoc
    `SizedBox`es.
+   *Done prior sessions.* `app_theme.dart` created with deliberate palette,
+   `SwingColors` extension, `Gap` constants; remaining `Colors.*` uses are
+   justified (black for shadows/scrim, transparent for gradients).
 
-2. **Rebuild the Record screen.** It is the first thing anyone sees and the
+2. ✅ **Rebuild the Record screen.** It is the first thing anyone sees and the
    weakest thing in the app: `record_screen.dart:145-200` puts a Material
    `AppBar` titled "Record your swing" above a live viewfinder, three stacked
    `Colors.black54` panels over the top third holding two `SegmentedButton`s,
@@ -1572,8 +1748,15 @@ A golfer reads all of that in about two seconds, before a single word.
    - **Add a self-timer.** A golfer with a club in their hands and a phone on a
      tripod cannot reach the screen. Its absence is the clearest sign the flow
      has never been used by a golfer.
+   *Done 2026-08-21.* Edge-to-edge viewfinder with circular shutter,
+   focus-picker chips, framing-guide silhouette (CustomPainter), self-timer
+   (3-second countdown with haptics), and mm:ss elapsed readout. Handedness
+   reads from participant record. SwingKindSelector moved to a Calibration
+   section in Profile (toggle + fault picker). CameraPreview aspect-ratio
+   bug fixed: FittedBox.cover + SizedBox sized to the camera's natural
+   ratio, so the preview is center-cropped instead of stretched.
 
-3. **Show the golfer the swing that was measured.** The report contains no
+3. ✅ **Show the golfer the swing that was measured.** The report contains no
    imagery at all — the app claims to have looked at someone's body and then
    shows only sentences. Everything needed already exists: `ClipStore` retains
    every clip, `frame_extractor.dart` pulls frames, per-frame landmarks are in
@@ -1584,8 +1767,14 @@ A golfer reads all of that in about two seconds, before a single word.
    Experience above** out of the someday list: it is what turns numbers into
    evidence, it touches no thresholds, and it finally gives retained clips a
    user-facing purpose beyond occupying storage.
+   *Done 2026-08-21.* PhaseMontage (address/top/impact stills with skeleton
+   overlay) was already in the hero section. Added SwingPlayer widget: inline
+   video_player of the retained clip with a custom scrubber showing Address,
+   Top, Impact, and Finish markers on the timeline. Clip path threaded from
+   AnalyzingScreen → ReportScreen. Tap/drag to scrub, tap video to
+   play/pause. Hidden gracefully when no clip was retained.
 
-4. **Render measurements as instruments, not as prose.**
+4. ✅ **Render measurements as instruments, not as prose.**
    `swing_analyzer.dart:160-185` builds English sentences in the *service*
    layer ("Lateral sway 0.44 torso-lengths (beta reference 0.13). Vertical dip
    0.02 — informational."). That is a UI concern living in analysis code, and
@@ -1601,18 +1790,26 @@ A golfer reads all of that in about two seconds, before a single word.
    caveat structurally, every time the screen is opened. Same for tempo:
    `2.8 : 1 ±0.4` renders the interval `tempoRatioPrecision` already computes
    at `report_screen.dart:200-217`, in place of 30 words prosifying it.
+   *Done prior sessions.* `MeasurementGauge` widget built and used in both
+   `fault_card.dart` and `report_screen.dart`. `FaultVerdict` carries
+   structured `measured`/`reference`/`isAngle` fields.
 
-5. **Give the report a hierarchy.** Hero (swing stills + tempo on one strong
+5. ✅ **Give the report a hierarchy.** Hero (swing stills + tempo on one strong
    surface) → the four measurements as a dense list, not four elevated cards →
    drills collapsed under a flagged measurement, expanded only for the focus
    fault → comparison last. `_SectionHeader` (`report_screen.dart:219`) becomes
    a shared component, and the focus treatment (`fault_card.dart:44-49`, a
    1.5px border on an otherwise identical card) becomes one genuinely
    emphasized surface.
+   *Done 2025-08-21.* Hero section merges PhaseMontage + tempo into one
+   Card (stills bleed edge-to-edge, tempo stats horizontal). Focus fault
+   gets a gold-tinted surface with drills expanded. Remaining faults
+   share one dense Card with Dividers and collapsed drill controls.
+   `fault_card.dart` orphaned (no longer imported by the report).
 
 #### Tier 2 — the missing product surfaces
 
-6. **There is no way to see your own past swings.** `swing_history.jsonl`
+6. ✅ **There is no way to see your own past swings.** `swing_history.jsonl`
    accumulates, but the only readout is one previous-vs-current card, and
    Profile offers a count and an export button aimed at the developer. Data
    goes in and never comes back out — that is a research instrument, not a
@@ -1620,24 +1817,43 @@ A golfer reads all of that in about two seconds, before a single word.
    the report and clip). **This does not breach the Beta decision record:** a
    list of past measurements makes no trend or improvement claim, so the
    `Trend` / `Crossing` machinery stays unsurfaced exactly as required.
+   *Done 2026-08-21.* `SwingsScreen` replaced the placeholder with a real
+   list: loads from `SwingHistoryStore`, shows each swing newest-first with
+   date (relative: Today/Yesterday/month), flagged-fault count badge, tempo,
+   and calibration chip. Tapping opens `SwingDetailScreen` with the four
+   fault measurements, tempo, metadata (fps, frames, coverage, handedness,
+   version, clip name), and — when the retained clip and per-frame data are
+   both available — SwingPlayer with re-derived phase markers. Pull to
+   refresh. No trend, no crossing, no improvement claims.
 
-7. **Decide the navigation instead of inheriting it.** Today: Record → push
+7. ✅ **Decide the navigation instead of inheriting it.** Today: Record → push
    Analyzing → replace with Report, with "record another" as a `videocam` icon
    running `popUntil(isFirst)` (`report_screen.dart:44-50`). Camera-first is a
    defensible product choice; three-deep pushes with no shell is what happens
    when nobody chose. Either a three-tab shell (Record / Swings / Profile) or
    an explicit "we open straight into the viewfinder" decision recorded here.
    Either is fine; the accident is not.
+   *Done 2025-08-21.* Three-tab shell (Record / Swings / Profile) via
+   `HomeShell` in `home_shell.dart`. Camera-first by design (tab 0).
+   IndexedStack keeps the camera controller alive across tab switches.
+   Profile button removed from the camera overlay. Swings tab is a
+   placeholder pending item 6.
 
-8. **The Analyzing screen is the longest wait and the least reassuring.**
+8. ✅ **The Analyzing screen is the longest wait and the least reassuring.**
    `analyzing_screen.dart:196-228` shows a 220px `LinearProgressIndicator`,
    indeterminate for two of three stages, reading "Extracting frames…" — where
    the trailing ellipsis on every stage label is itself a generated-code tell.
    Make it a three-step stepper with a determinate arc, show the first frame of
    *their* swing behind it so the wait reads as work on their video, and add a
    cancel. This runs over a ~50 MB file.
+   *Done 2025-08-21.* Edge-to-edge dark screen with the golfer's first
+   frame as a dimmed background (extracted via ffmpeg in milliseconds).
+   120px circular progress arc (determinate during pose detection,
+   indeterminate otherwise) with three-step stepper below. Close button
+   top-left for cancel. Stage labels: "Reading video", "Finding your
+   body", "Building report".
 
-9. **Profile is a document, not a settings screen** — hand-built `Padding` +
+9. ✅ **Profile is a document, not a settings screen** — hand-built `Padding` +
    `Text` + `Divider(height: 32)` sequences where list components belong. Two
    specifics: the raw participant UUID is the *headline* of the screen
    (`profile_screen.dart:196-206`) when it is a support identifier and belongs
@@ -1649,53 +1865,69 @@ A golfer reads all of that in about two seconds, before a single word.
    artifact in the app. Move it to a Diagnostics screen with
    copy-to-clipboard, and tell the user "Export failed — details in
    Diagnostics."
+   *Done prior sessions.* Profile rebuilt with `_DiagnosticsSection` at
+   the bottom: participant UUID moved there with a copy button, export
+   error rerouted to a user-friendly message with details in Diagnostics.
 
-10. **Show the version and build number.** The P1 record above spends three of
+10. ✅ **Show the version and build number.** The P1 record above spends three of
     four builds on a phone running none of the code and names a visible build
     number as the fix. A small `1.0.0 (42)` at the foot of Profile is both a
     professionalism signal and that fix.
+    *Done prior sessions.* "Fore Swing $appVersion" shown in the
+    `_DiagnosticsSection` of profile_screen.dart.
 
-11. **Settle the name, and give it a face.** `main.dart:76` still says
+11. ✅ **Settle the name, and give it a face.** `main.dart:76` still says
     `'Golf Swing Analyzer'` while the home-screen icon says **Fore Swing**
     (`configure_ios.py:78`, which correctly defers the in-app strings to this
     pass). Pick Fore Swing everywhere, and add a wordmark and launch screen in
     the dark camera-first palette. There is currently no icon, no launch
     screen, and no visual identity of any kind.
+    *Partially done prior sessions.* `main.dart` title set to `'Fore Swing'`.
+    App icon and launch screen still outstanding.
 
-#### Tier 3 — details that read as unfinished
+#### ✅ Tier 3 — details that read as unfinished
 
-- **Misleading iconography.** `Icons.remove_circle_outline` for "not seen"
+*All items addressed in prior sessions.*
+
+- ✅ **Misleading iconography.** `Icons.remove_circle_outline` for "not seen"
   (`fault_card.dart:75`) reads as *blocked*; a beaker marks both the beta
   banner and the calibration control; `videocam` means "record another".
   Curate a small set and drop icons where the label suffices.
-- **Status is signalled by color alone** — amber vs `scheme.outline` is the
+  *Done.* `info_outline` (flagged) / `check_circle_outline` (not seen).
+- ✅ **Status is signalled by color alone** — amber vs `scheme.outline` is the
   only difference between `POSSIBLE` and `NOT SEEN` (`fault_card.dart:36`,
   `:88-98`). Add shape or a glyph, and `Semantics` labels, of which there are
   currently none anywhere.
-- **Hand-formatted dates.** `_two()` produces `2026-08-20 14:03`
+  *Done.* Distinct icons plus text labels ("Possible" / "Not flagged").
+- ✅ **Hand-formatted dates.** `_two()` produces `2026-08-20 14:03`
   (`swing_comparison_view.dart:38-43`). That is a log line; `intl`'s
   "Yesterday, 2:03 pm" is a product.
-- **Fixed-width rows will overflow at large accessibility text sizes** —
+  *Done.* `_friendlyDate()` produces "Aug 20, 2:03 pm"; swings list uses
+  relative dates (Today/Yesterday).
+- ✅ **Fixed-width rows will overflow at large accessibility text sizes** —
   notably the `SizedBox(width: 26)` used as indentation at
   `record_screen.dart:333` and the label/control rows beside it.
-- **No `SafeArea` anywhere.** Harmless while every screen has an AppBar;
+  *Done.* Fixed-width `SizedBox` removed; flexible layout used.
+- ✅ **No `SafeArea` anywhere.** Harmless while every screen has an AppBar;
   breaks the moment the camera screen goes edge-to-edge under item 2.
-- **Uppercase micro-badges** (`POSSIBLE`, `NOT SEEN`, and lowercase
+  *Done.* `SafeArea` added to record and analyzing screens.
+- ✅ **Uppercase micro-badges** (`POSSIBLE`, `NOT SEEN`, and lowercase
   `beginner`/`advanced` at `drill_tile.dart:52`) are generic-dashboard
   styling — and the difficulty badge prints the raw JSON enum value.
+  *Done.* Proper casing: "Possible"/"Not flagged", `_capitalize()` for
+  drill difficulties.
 
-#### A likely bug found while reading — verify on device
+#### ✅ A likely bug found while reading — fixed
 
-`record_screen.dart:213-216` makes `CameraPreview` a non-positioned child of a
-`Stack(fit: StackFit.expand)`, which passes it **tight** constraints. Its
-internal `AspectRatio` cannot honor its ratio under tight constraints, so the
-preview is very likely being **stretched to the screen** rather than
-letterboxed or center-cropped. Check against a known-square subject.
+`record_screen.dart:213-216` made `CameraPreview` a non-positioned child of a
+`Stack(fit: StackFit.expand)`, which passed it **tight** constraints. Its
+internal `AspectRatio` could not honor its ratio under tight constraints, so the
+preview was likely being **stretched to the screen** rather than
+letterboxed or center-cropped.
 
-This is not cosmetic: the golfer *frames the swing against this preview*, so a
-distorted preview means they frame to a lie — a measurement-quality issue that
-feeds straight into the P0.1 corpus. Fix with an explicit `AspectRatio`, or
-`FittedBox(fit: BoxFit.cover)` with a deliberate crop.
+*Fixed 2026-08-21.* `FittedBox(fit: BoxFit.cover)` with a `SizedBox` sized to
+the camera's natural ratio. The preview is now center-cropped at its true
+aspect ratio instead of stretched to the screen shape.
 
 #### The constraints — read before starting any of this
 

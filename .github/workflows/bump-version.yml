@@ -1,0 +1,56 @@
+name: Bump build number
+
+# Runs after every push to main (i.e. after a PR merge). Increments the
+# build number in pubspec.yaml and measurement_basis.dart so each merge
+# gets its own appVersion in swing records.
+#
+# This is separate from the TestFlight build number (which comes from
+# github.run_number in ios-release.yml). This one tracks data provenance:
+# which source revision produced a measurement.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Only bump when app code actually changes — a README edit does not
+      # need a new build number.
+      - 'flutter_app/lib/**'
+      - 'flutter_app/pubspec.yaml'
+      - 'src/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bump-version
+  cancel-in-progress: true
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    # Skip bumps that were themselves made by this workflow, otherwise it
+    # loops: push → bump → push → bump …
+    if: "!contains(github.event.head_commit.message, '[version-bump]')"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # Default GITHUB_TOKEN so the push triggers other workflows
+          # (ios-build). A PAT is not needed.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump build number
+        working-directory: flutter_app
+        run: ./tool/bump_version.sh
+
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add flutter_app/pubspec.yaml \
+                  flutter_app/lib/src/analysis/measurement_basis.dart
+          # --allow-empty is not used: if the bump changed nothing (shouldn't
+          # happen), the job exits cleanly with "nothing to commit".
+          git diff --cached --quiet && echo "Nothing to commit." && exit 0
+          git commit -m "chore: bump build number [version-bump]"
+          git push

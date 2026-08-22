@@ -9,6 +9,10 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../analysis/drill_recommender.dart';
 import '../analysis/faults.dart';
@@ -17,6 +21,7 @@ import '../analysis/swing_history.dart';
 import '../analysis/swing_phases.dart';
 import '../models/drill.dart';
 import '../models/frame_features.dart';
+import '../models/key_frame.dart';
 import '../models/swing_analysis.dart';
 import 'frame_extractor.dart';
 import 'pose_estimator.dart';
@@ -124,13 +129,34 @@ class SwingAnalyzer {
       }
 
       onProgress?.call(AnalysisStage.computingReport, 1);
-      return _buildReport(
+      final analysis = _buildReport(
         features,
         extracted.fps,
         targeting,
         swingKind,
         calibrationFault,
         clipName,
+      );
+
+      // Preserve address / top / impact stills before the working directory
+      // is cleaned up. These are the frames the golfer sees on the report —
+      // the visual evidence that the numbers came from a real observation.
+      final keyFrames = await _preserveKeyFrames(
+        extracted.framePaths,
+        analysis.phases,
+        features,
+      );
+
+      return SwingAnalysis(
+        phases: analysis.phases,
+        tempo: analysis.tempo,
+        fps: analysis.fps,
+        frameCount: analysis.frameCount,
+        faults: analysis.faults,
+        recommendations: analysis.recommendations,
+        session: analysis.session,
+        targeting: analysis.targeting,
+        keyFrames: keyFrames,
       );
     } finally {
       // Clean up the extracted JPEGs regardless of outcome.
@@ -158,7 +184,23 @@ class SwingAnalyzer {
     final torso = [for (final f in features) f.torso];
     final wristY = [for (final f in features) f.wristY];
 
-    final detected = detectPhases(wristY);
+    // Stance-bounded localization, live as of 2026-08-20. Passing torso and
+    // hipX opts into it; without them this is the peak-based localization that
+    // scored **0/14** against device labels, anchoring in the walk-in on every
+    // real clip ever measured. Bounded to the stance it scores 12/14 and
+    // declines one of the three no-swing clips instead of inventing a swing.
+    //
+    // A null here now has two meanings, and both are handled by the gate
+    // below: fewer than two frames had a pose, OR the golfer never stood still
+    // long enough to form a stance. The second is a real answer -- there is no
+    // swing in a clip where nobody settled -- and it must NOT fall back to the
+    // 0/14 method. See P1.4 in ROADMAP.md.
+    final detected = detectPhases(
+      wristY,
+      fps: fps,
+      torso: torso,
+      hipX: hipX,
+    );
 
     // Hard fail rather than reporting around the gap. Showing tempo with the
     // verdicts suppressed would invite the surviving numbers to be read as
@@ -169,8 +211,9 @@ class SwingAnalyzer {
       // Carry the measurements out with the rejection. The golfer sees the
       // message; the corpus gets a negative it can be scored against.
       throw SwingAnalysisException(
-        "That didn't look like a golf swing — $reason. Film from side-on with "
-        'your whole body in frame, and keep the camera still.',
+        "We couldn't find a swing in that clip — $reason. "
+        'Try filming from the side, with your whole body in frame '
+        'and the camera still.',
         reason: reason,
         frames: FrameSeries.fromFeatures(features),
         fps: fps,
@@ -192,32 +235,34 @@ class SwingAnalyzer {
         id: faultHeadSway,
         label: faultLabels[faultHeadSway]!,
         flagged: head.flagged,
-        detail: 'Lateral sway ${_fmt(head.lateral)} torso-lengths '
-            '(beta reference ${_fmt(swayThreshold)}). '
-            'Vertical dip ${_fmt(head.vertical)} — informational.',
+        measured: head.lateral,
+        reference: swayThreshold,
+        detail: _headSwayDetail(head),
       ),
       FaultVerdict(
         id: faultReversePivot,
         label: faultLabels[faultReversePivot]!,
         flagged: pivot.flagged,
-        detail: 'Spine lean ${_fmtSigned(pivot.reverse)} torso-lengths toward '
-            'target (beta reference ${_fmt(reversePivotThreshold)}).',
+        measured: pivot.reverse,
+        reference: reversePivotThreshold,
+        detail: _reversePivotDetail(pivot),
       ),
       FaultVerdict(
         id: faultEarlyExtension,
         label: faultLabels[faultEarlyExtension]!,
         flagged: extension.flagged,
-        detail: 'Pelvis rise ${_fmtSigned(extension.rise)} torso-lengths '
-            '(beta reference ${_fmt(earlyExtensionThreshold)}).',
+        measured: extension.rise,
+        reference: earlyExtensionThreshold,
+        detail: _earlyExtensionDetail(extension),
       ),
       FaultVerdict(
         id: faultLossOfPosture,
         label: faultLabels[faultLossOfPosture]!,
         flagged: posture.flagged,
-        detail: 'Spine tilt ${_fmtDeg(posture.tiltAddress)} → '
-            '${_fmtDeg(posture.tiltImpact)} '
-            '(straightened ${_fmtSignedDeg(posture.straighten)}, '
-            'beta reference ${_fmtDeg(postureThreshold)}).',
+        measured: posture.straighten,
+        reference: postureThreshold,
+        isAngle: true,
+        detail: _lossOfPostureDetail(posture),
       ),
     ];
 
@@ -263,13 +308,111 @@ class SwingAnalyzer {
     );
   }
 
+  /// Copy the address / top / impact JPEGs to a persistent directory so the
+  /// report screen can show them. Returns null on any failure — a missing
+  /// montage must never block the report.
+  Future<List<KeyFrame>?> _preserveKeyFrames(
+    List<String> framePaths,
+    SwingPhases phases,
+    List<FrameFeatures> features,
+  ) async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir =
+          await Directory(p.join(docs.path, 'key_frames')).create(recursive: true);
+
+      // The three frames that tell the story of a swing.
+      final entries = <_KeyFrameSpec>[
+        _KeyFrameSpec('Address', phases.takeaway, features),
+        _KeyFrameSpec('Top', phases.top, features),
+        _KeyFrameSpec('Impact', phases.impact, features),
+      ];
+
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final result = <KeyFrame>[];
+      for (final entry in entries) {
+        if (entry.index < 0 || entry.index >= framePaths.length) continue;
+        final source = File(framePaths[entry.index]);
+        if (!source.existsSync()) continue;
+        final dest = p.join(
+          dir.path,
+          '${stamp}_${entry.label.toLowerCase()}.jpg',
+        );
+        await source.copy(dest);
+        result.add(KeyFrame(
+          imagePath: dest,
+          label: entry.label,
+          frameIndex: entry.index,
+          features: entry.index < features.length ? features[entry.index] : null,
+        ));
+      }
+      return result.isEmpty ? null : result;
+    } catch (_) {
+      // Storage hiccup: the report still works without stills.
+      return null;
+    }
+  }
+
   Future<void> dispose() => _poseEstimator.dispose();
 
+  // ---------------------------------------------------------------------------
+  // Fault detail copy — written for a golfer, not a log file.
+  //
+  // Each detail sits under a "Possible" or "Not flagged" badge and next to a
+  // MeasurementGauge, so it does not need to restate both numbers — the gauge
+  // draws them. The text says what was observed, in terms that mean something
+  // to someone holding a club. The gauge line beneath carries the numeric
+  // precision for anyone who wants it.
+  //
+  // THE CONSTRAINT (ROADMAP § Product voice): every hedge the old copy carried
+  // is preserved. The tentative framing is structural (the badge), so the
+  // detail itself stays plain — describing the measurement, not diagnosing the
+  // swing. "Your head drifted sideways" is an observation; "you have head
+  // sway" would be a diagnosis the thresholds can't support.
+  // ---------------------------------------------------------------------------
+
+  static String _headSwayDetail(HeadMovementResult head) {
+    final lateralWord = head.flagged ? 'drifted' : 'stayed fairly quiet';
+    final dip = head.vertical.isFinite && head.vertical.abs() > 0.02
+        ? ' Dipped ${_fmt(head.vertical)} vertically.'
+        : '';
+    return head.flagged
+        ? 'Your head $lateralWord from address to impact.$dip'
+        : 'Your head $lateralWord through the swing.$dip';
+  }
+
+  static String _reversePivotDetail(ReversePivotResult pivot) {
+    return pivot.flagged
+        ? 'Your spine leaned toward the target at the top instead of '
+            'loading behind the ball.'
+        : 'Good weight loading — spine stayed behind the ball at the top.';
+  }
+
+  static String _earlyExtensionDetail(EarlyExtensionResult ext) {
+    return ext.flagged
+        ? 'Your hips moved toward the ball during the downswing. '
+            'Try to keep them back through impact.'
+        : 'Hips stayed in posture through the downswing.';
+  }
+
+  static String _lossOfPostureDetail(LossOfPostureResult posture) {
+    final change = posture.straighten;
+    if (!change.isFinite) return 'Spine angle could not be measured.';
+    return posture.flagged
+        ? 'Your spine straightened ${_fmtDeg(change.abs())} from address to '
+            'impact — try to hold your tilt through the ball.'
+        : 'Good posture — spine angle held steady through impact.';
+  }
+
   static String _fmt(double v) => v.isFinite ? v.toStringAsFixed(2) : '—';
-  static String _fmtSigned(double v) =>
-      v.isFinite ? '${v >= 0 ? '+' : ''}${v.toStringAsFixed(2)}' : '—';
   static String _fmtDeg(double v) =>
       v.isFinite ? '${v.toStringAsFixed(0)}°' : '—';
-  static String _fmtSignedDeg(double v) =>
-      v.isFinite ? '${v >= 0 ? '+' : ''}${v.toStringAsFixed(0)}°' : '—';
+}
+
+/// Bundles a key frame spec for [SwingAnalyzer._preserveKeyFrames].
+class _KeyFrameSpec {
+  final String label;
+  final int index;
+  final List<FrameFeatures> features;
+  const _KeyFrameSpec(this.label, this.index, this.features);
 }

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../analysis/faults.dart' show faultIds, faultLabels;
+import '../analysis/measurement_basis.dart' show appVersion;
 import '../analysis/participant.dart';
 import '../analysis/swing_history.dart';
 import '../services/clip_store.dart';
@@ -18,6 +21,7 @@ class ProfileScreen extends StatefulWidget {
     super.key,
     required this.participant,
     required this.store,
+    this.onParticipantChanged,
   });
 
   final Participant participant;
@@ -25,12 +29,25 @@ class ProfileScreen extends StatefulWidget {
   /// Null when device storage was unavailable; edits then cannot be saved.
   final ParticipantStore? store;
 
+  /// Called when the participant record is saved, so the navigation shell can
+  /// propagate changes (e.g. handedness) to sibling tabs.
+  final ValueChanged<Participant>? onParticipantChanged;
+
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late Participant _participant = widget.participant;
+
+  @override
+  void didUpdateWidget(covariant ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.participant != widget.participant) {
+      _participant = widget.participant;
+    }
+  }
+
   /// Anchors the iOS share popover to the export button.
   final GlobalKey _exportButtonKey = GlobalKey();
   bool _exporting = false;
@@ -149,7 +166,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (store == null) return;
     try {
       final saved = await store.setCoachReport(faultId, value);
-      if (mounted) setState(() => _participant = saved);
+      if (mounted) {
+        setState(() => _participant = saved);
+        widget.onParticipantChanged?.call(saved);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save: $error')),
+      );
+    }
+  }
+
+  Future<void> _setCalibration({required bool enabled, String? fault}) async {
+    final store = widget.store;
+    setState(() {
+      _participant = _participant.copyWith(
+        calibrationMode: enabled,
+        calibrationFault: fault ?? _participant.calibrationFault,
+      );
+    });
+    if (store == null) return;
+    try {
+      final saved = await store.setCalibration(
+        enabled: enabled,
+        fault: fault ?? _participant.calibrationFault,
+      );
+      if (mounted) {
+        setState(() => _participant = saved);
+        widget.onParticipantChanged?.call(saved);
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -192,12 +238,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       }
     } catch (error) {
+      debugPrint('Share failed: origin=$origin screen=$screen error=$error');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 20),
-          content: Text('Export failed.\nsent origin: $origin\n'
-              'screen: $screen\n$error'),
+        const SnackBar(
+          content: Text('Share failed. Try again, or restart the app.'),
         ),
       );
     } finally {
@@ -223,30 +268,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text('Anonymous id', style: theme.textTheme.titleMedium),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              '${_participant.id}\n\nRandomly generated on this device. It is '
-              'not linked to you, your phone, or any account — it only groups '
-              'your swings together.',
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
-          const Divider(height: 32),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
             child:
                 Text('What a coach has told you', style: theme.textTheme.titleMedium),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
-              'Optional. If a coach has pointed out one of these in your swing, '
-              'saying so here helps us check whether the app agrees. It is not '
-              'used to change your reports.',
+              'If a coach has pointed out any of these, let us know — '
+              'it helps us check whether the app is seeing the same thing. '
+              'This won\'t change your reports.',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -257,15 +288,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onChanged: (value) => _setReport(faultId, value),
             ),
           const Divider(height: 32),
+
+          // Calibration mode — corpus instrumentation, not a golfer feature.
+          // Tucked in Profile so it's accessible without cluttering the
+          // viewfinder. See ROADMAP.md item 2.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child:
+                Text('Calibration mode', style: theme.textTheme.titleMedium),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Text(
+              'Record a swing with one fault exaggerated on purpose, so we can '
+              'check the detectors are seeing it.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Calibration swing'),
+            subtitle: _participant.calibrationMode
+                ? Text(
+                    'Next swing will be recorded as a calibration for '
+                    '"${faultLabels[_participant.calibrationFault ?? faultIds.first] ?? faultIds.first}".',
+                  )
+                : const Text('Off — swings are recorded normally.'),
+            value: _participant.calibrationMode,
+            onChanged: widget.store == null
+                ? null
+                : (value) => _setCalibration(enabled: value),
+          ),
+          if (_participant.calibrationMode)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: DropdownButtonFormField<String>(
+                value: _participant.calibrationFault ?? faultIds.first,
+                decoration: const InputDecoration(
+                  labelText: 'Fault to exaggerate',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  for (final id in faultIds)
+                    DropdownMenuItem(
+                      value: id,
+                      child: Text(faultLabels[id] ?? id),
+                    ),
+                ],
+                onChanged: widget.store == null
+                    ? null
+                    : (value) {
+                        if (value != null) {
+                          _setCalibration(enabled: true, fault: value);
+                        }
+                      },
+              ),
+            ),
+          const Divider(height: 32),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text('Send your swings', style: theme.textTheme.titleMedium),
+            child: Text('Share your swings', style: theme.textTheme.titleMedium),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
-              'Your swings are stored only on this phone and nothing is '
-              'uploaded. Use this to send the file yourself when asked for it.',
+              'Your swings stay on this phone — nothing is uploaded. '
+              'Share the file whenever you\'re ready.',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -275,7 +362,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               key: _exportButtonKey,
               onPressed: _exporting ? null : _export,
               icon: const Icon(Icons.ios_share),
-              label: Text(_exporting ? 'Preparing…' : 'Export swing history'),
+              label: Text(_exporting ? 'Preparing…' : 'Share swing history'),
             ),
           ),
           const Divider(height: 32),
@@ -316,6 +403,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               label: Text(_deletingClips ? 'Deleting…' : 'Delete saved videos'),
             ),
           ),
+          const Divider(height: 32),
+          _DiagnosticsSection(participantId: _participant.id),
         ],
       ),
     );
@@ -356,6 +445,61 @@ class _CoachReportRow extends StatelessWidget {
               if (selection.isNotEmpty) onChanged(selection.first);
             },
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Version and anonymous ID — small, at the bottom, for support and debugging.
+class _DiagnosticsSection extends StatelessWidget {
+  const _DiagnosticsSection({required this.participantId});
+
+  final String participantId;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.outline,
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Diagnostics', style: theme.textTheme.titleMedium),
+          Gap.sm,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  participantId,
+                  style: muted?.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.copy, size: 16),
+                tooltip: 'Copy ID',
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: participantId));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('ID copied')),
+                  );
+                },
+              ),
+            ],
+          ),
+          Text(
+            'Random ID for this device — groups your swings together. '
+            'Not linked to you or any account.',
+            style: muted,
+          ),
+          Gap.sm,
+          Text('Fore Swing $appVersion', style: muted),
         ],
       ),
     );
