@@ -31,9 +31,10 @@ def main():
     per_frame_landmarks = result.landmarks
     wrist_y = result.wrist_y()
     fps = result.fps
+    torso, hip_x = result.localization_series()
 
     # Step 3: Detect phases and pick the four iconic checkpoint frames
-    phases = detect_phases(wrist_y)
+    phases = detect_phases(wrist_y, fps=fps, torso=torso, hip_x=hip_x)
     n = len(wrist_y)
     if phases:
         checkpoints = [

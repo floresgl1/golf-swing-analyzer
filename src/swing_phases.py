@@ -444,13 +444,15 @@ def main():
     wrist_y = result.wrist_y()
     # CONTAINER fps: correct for the tempo RATIO (frame-based, so it cancels)
     # and for timestamps, but NOT the CAPTURE fps the windows scale with --
-    # for slow-mo clips they differ (see BASELINE_FPS notes). detect_phases
-    # is therefore left on its BASELINE_FPS default; wire a real capture_fps
-    # here once the corpus carries it as metadata.
+    # for slow-mo clips they differ (see BASELINE_FPS notes). The LOCALIZATION
+    # path (locate_swing / stance_bounds) uses container fps correctly: its
+    # duration-based windows depend only on frame spacing. The DETECTOR windows
+    # in faults.py stay on BASELINE_FPS -- see faults.py main() for the seam.
     fps = result.fps
+    torso, hip_x = result.localization_series()
 
     # Detect the swing phases from the trajectory
-    phases = detect_phases(wrist_y)
+    phases = detect_phases(wrist_y, fps=fps, torso=torso, hip_x=hip_x)
     n = len(wrist_y)
 
     def _t(f):
