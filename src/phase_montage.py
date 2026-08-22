@@ -36,6 +36,9 @@ def main():
     # Step 3: Detect phases and pick the four iconic checkpoint frames
     phases = detect_phases(wrist_y, fps=fps, torso=torso, hip_x=hip_x)
     n = len(wrist_y)
+    if n == 0:
+        print('No frames in video -- nothing to montage.')
+        return
     if phases:
         checkpoints = [
             ('Address', phases['takeaway'] // 2),
@@ -64,6 +67,9 @@ def main():
     cap.release()
 
     # Step 5: Lay the checkpoints out left-to-right as a swing-sequence strip
+    if not panels:
+        print('Could not read any checkpoint frames -- nothing to montage.')
+        return
     fig, axes = plt.subplots(1, len(panels), figsize=(3.2 * len(panels), 6))
     if len(panels) == 1:
         axes = [axes]

@@ -184,6 +184,14 @@ def detect_phases(wrist_y, fps=BASELINE_FPS, smooth=None, torso=None,
         smooth = frames_for(SMOOTH_WINDOW_S, fps, odd=True)
     y = np.array(wrist_y, dtype=float)
     n = len(y)
+
+    # A trajectory shorter than the smoothing window produces degenerate events
+    # (e.g. takeaway == top == 0) — plausible-looking but meaningless numbers.
+    # At BASELINE_FPS smooth is 5, so this rejects clips under ~21 ms; at 30 fps
+    # it is 1 frame, which argmin/argmax still handle but no real swing can fit.
+    if n < smooth:
+        return None
+
     idx = np.arange(n)
 
     # Fill frames with no detection (nan) by linear interpolation
