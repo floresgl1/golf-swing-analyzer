@@ -1691,6 +1691,25 @@ hardcoded. `FAULT_LABELS` maps fault ids to display names; `recommend_drills`
 filters by `drill['fault'] == fault_id`, sorted by `DIFFICULTY_ORDER`.
 Structurally clean.
 
+#### AUDIT robustness items — FIXED 2026-08-22
+
+Three items from `AUDIT.md`'s "fix first" list closed in one pass:
+
+- **`requirements.txt`: `numpy` pinned** (AUDIT #16 🟠). Was only present as a
+  transitive dep of mediapipe. Now pinned at `2.4.6`.
+- **`phase_montage.py` empty-video crash** (AUDIT #5 🟠). `n == 0` made the
+  fallback compute `int(f * (n-1))` with `n-1 == -1`; a truly empty video also
+  hit `plt.subplots(1, 0)`. Now guarded: both `n == 0` and `panels == []` exit
+  with a message instead of crashing.
+- **Minimum-frame guard in `detect_phases`** (AUDIT #6 🟠). A trajectory shorter
+  than the smoothing window (5 frames at BASELINE_FPS) now returns `None` instead
+  of producing degenerate phases with meaningless numbers.
+  `test_detect_phases_returns_none_when_shorter_than_smooth` covers it.
+
+The fourth item — `load_drills` error handling (AUDIT #8 🟠) — was already fixed
+in an earlier session; `tests/test_robustness.py` covers corrupt/missing/wrong-
+shape `drills.json`. 96 tests pass.
+
 ---
 
 ## Future Feature Roadmap

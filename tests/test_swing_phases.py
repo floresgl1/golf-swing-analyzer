@@ -46,6 +46,14 @@ def test_detect_phases_returns_none_without_enough_data():
     assert detect_phases([0.5]) is None
 
 
+def test_detect_phases_returns_none_when_shorter_than_smooth():
+    """A trajectory shorter than the smoothing window cannot be a swing."""
+    # At BASELINE_FPS the default smooth is 5, so 4 real frames is too few.
+    assert detect_phases([0.5, 0.4, 0.3, 0.6]) is None
+    # Empty trajectory
+    assert detect_phases([]) is None
+
+
 def test_swing_tempo_ratio():
     phases = {'takeaway': 3, 'top': 12, 'impact': 20, 'finish': 26}
     tempo = swing_tempo(phases, fps=30)
