@@ -6,12 +6,25 @@ import numpy as np
 LEFT_WRIST = 15
 RIGHT_WRIST = 16
 
-# Configuration
+# Configuration — module-level defaults (right-handed). Use lead_wrist_for /
+# lead_side_for to derive the correct constants for a given handedness at
+# runtime; these constants are kept for backward compatibility with callers
+# that import them directly.
 HANDEDNESS = 'right'  # 'right' or 'left'
 # The tracked hand is the LEAD hand (closer to the target):
 # left wrist for a right-handed golfer, right wrist for a lefty.
 LEAD_WRIST = LEFT_WRIST if HANDEDNESS == 'right' else RIGHT_WRIST
 LEAD_SIDE = 'Left' if HANDEDNESS == 'right' else 'Right'
+
+
+def lead_wrist_for(handedness='right'):
+    """MediaPipe landmark index for the lead wrist (15 or 16)."""
+    return LEFT_WRIST if handedness == 'right' else RIGHT_WRIST
+
+
+def lead_side_for(handedness='right'):
+    """Human-readable label for the lead side ('Left' or 'Right')."""
+    return 'Left' if handedness == 'right' else 'Right'
 
 
 # --------------------------------------------------------------------------- #
@@ -447,9 +460,12 @@ def swing_tempo(phases, fps):
 
 
 def main():
+    import sys
+    handedness = 'left' if '--left' in sys.argv else 'right'
+
     from pose_pipeline import run_pose_detection
     result = run_pose_detection('data/videos/videoplayback.mp4')
-    wrist_y = result.wrist_y()
+    wrist_y = result.wrist_y(handedness)
     # CONTAINER fps: correct for the tempo RATIO (frame-based, so it cancels)
     # and for timestamps, but NOT the CAPTURE fps the windows scale with --
     # for slow-mo clips they differ (see BASELINE_FPS notes). The LOCALIZATION
@@ -504,7 +520,7 @@ def main():
             plt.axvline(f, color=color, linestyle='--', linewidth=1)
         plt.legend(loc='lower right', fontsize=8, ncol=4)
 
-    plt.title(f'{LEAD_SIDE} Wrist Y-Position Over Time')
+    plt.title(f'{lead_side_for(handedness)} Wrist Y-Position Over Time')
     plt.xlabel('Frame')
     plt.ylabel('Y (normalized)')
     # MediaPipe y grows downward (0 = top of frame), so invert the axis to make

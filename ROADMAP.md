@@ -212,9 +212,13 @@ quality signal, and no trajectory data — a log, not a corpus.
   stored swing can be hand-labelled, so ground truth has to come from elsewhere.
   Carries storage, consent and privacy decisions that are not the app's to make
   unilaterally.
-- **Left-handed golfers on the Python side.** The app now asks and records
-  handedness, but `HANDEDNESS` in `src/swing_phases.py` is still a module
-  constant imported by six call sites including the GolfDB harness. See P0.3.
+- ~~**Left-handed golfers on the Python side.**~~ **RESOLVED 2026-08-22.**
+  `lead_wrist_for(handedness)` and `lead_side_for(handedness)` in
+  `swing_phases.py` replace the module-level `HANDEDNESS` constant for
+  runtime selection. `PoseResult.wrist_y(handedness='right')` threads
+  it through the pipeline. All five CLI scripts accept `--left`.
+  Module-level constants (`LEAD_WRIST`, `LEAD_SIDE`) kept for backward
+  compatibility (GolfDB harness, existing imports). See P0.3.
 - **Python↔Dart record-shape divergence.** The Dart store now writes JSON Lines
   with capture-context fields the Python `{"sessions": [...]}` document has no
   counterpart for. Field names are kept snake_case and aligned where they
@@ -246,7 +250,8 @@ INCLUDE:
                    *** HARD REQUIREMENT — reasons below, do not relax ***
   - settled address: >= 0.5 s of stillness before takeaway
                    *** HARD REQUIREMENT — reasons below, do not relax ***
-  - handedness:    right-handed only (until HANDEDNESS is parameterized)
+  - handedness:    right-handed only for this initial corpus (Python CLI
+                   now supports `--left`; see P0.3)
   - body type:     deliberately varied
   - skill level:   mixed, weighted amateur (sampling strategy, not a variable)
 
@@ -298,7 +303,7 @@ Why blocked: step 2 has no ground truth without the corpus. Doing step 1 alone s
 #### P0.3 — fps windowing refactor ✅ DONE
 - Window constants converted from hard-coded frame counts to durations (`SMOOTH_WINDOW_S`, `IMPACT_RADIUS_S`, `ADDRESS_OFFSET_S`, `DEFAULT_RADIUS_S`) resolved via `frames_for(seconds, fps)`; behavior-preserving at `BASELINE_FPS = 240` (all 24 windowing characterization tests unchanged; verified the suite catches a perturbed constant).
 - Remaining seam: `main()` still uses container fps and pins windowing to `BASELINE_FPS`. When P0.1 lands a `capture_fps` metadata field per video (defaulting to `CAP_PROP_FPS` when they agree), thread it into `detect_phases`/detectors — that is the point where slow-mo vs real-time stops being a hidden variable.
-- **Left-handed golfers**: `HANDEDNESS` is a module constant with no per-run override — lefties are analyzed on the trail wrist (garbage phases). Parameterize before admitting lefties to the corpus.
+- ~~**Left-handed golfers**~~: **RESOLVED 2026-08-22.** `lead_wrist_for(handedness)` / `lead_side_for(handedness)` provide runtime selection; all five CLI scripts accept `--left`. Module-level constants kept for backward compatibility. Corpus can now admit lefties when P0.1 collection resumes.
 
 #### P0.4 — The Python threshold tests were vacuous — FIXED 2026-08-19
 
@@ -2140,7 +2145,7 @@ The pipeline architecture (pose → phases → features → faults → drills �
 - **Lower is always better** for fault values; **tempo uses distance from 3:1** — different semantics
 - **Record-then-analyze** flow on mobile (not real-time) — simpler, more accurate
 
-### `_fold` is not order-independent at exactly ±90 — OPEN DECISION (2026-07-31)
+### `_fold` is not order-independent at exactly ±90 — RESOLVED 2026-08-22 (Option A)
 
 **The docstring states an invariant the code does not hold.** `line_angle`'s docstring (`src/body_angles.py:27-28`) says the result is "folded into [-90, 90] so it measures the line's tilt regardless of point order." That holds for every orientation except exactly vertical.
 

@@ -1,6 +1,8 @@
+import sys
+
 import cv2
 
-from swing_phases import detect_phases, LEAD_SIDE
+from swing_phases import detect_phases
 
 # MediaPipe pose landmark indices for the joints we care about
 LEFT_SHOULDER = 11
@@ -61,10 +63,12 @@ def phase_for_frame(i, phases):
 
 
 def main():
+    handedness = 'left' if '--left' in sys.argv else 'right'
+
     from pose_pipeline import run_pose_detection
     result = run_pose_detection(VIDEO_PATH)
     per_frame_landmarks = result.landmarks
-    wrist_y = result.wrist_y()
+    wrist_y = result.wrist_y(handedness)
     fps = result.fps
     width = result.width
     height = result.height

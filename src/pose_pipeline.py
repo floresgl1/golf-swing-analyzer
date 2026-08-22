@@ -15,7 +15,7 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-from swing_phases import require_valid_fps, LEAD_WRIST
+from swing_phases import require_valid_fps, LEAD_WRIST, lead_wrist_for
 
 # MediaPipe landmark indices for the shoulder/hip midpoints used by
 # localization_series(). Defined here rather than imported from faults.py
@@ -54,10 +54,15 @@ class PoseResult:
     def __len__(self):
         return len(self.landmarks)
 
-    def wrist_y(self):
-        """Lead-wrist y per frame (normalized 0..1, nan where undetected)."""
+    def wrist_y(self, handedness='right'):
+        """Lead-wrist y per frame (normalized 0..1, nan where undetected).
+
+        The lead hand is the one closer to the target: left wrist for a
+        right-handed golfer, right wrist for a lefty.
+        """
+        lw = lead_wrist_for(handedness)
         return [
-            lm[LEAD_WRIST].y if lm is not None else float('nan')
+            lm[lw].y if lm is not None else float('nan')
             for lm in self.landmarks
         ]
 

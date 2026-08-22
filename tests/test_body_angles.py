@@ -60,19 +60,17 @@ def test_smooth_line_angles_all_missing_is_nan():
 
 
 def test_fold_boundary_at_pm90():
-    """Pin that exactly ±90 is NOT folded (strict > 90 / < -90).
+    """Exactly +90 survives; exactly -90 folds to +90 (order-independence).
 
-    _fold uses `a > 90` and `a < -90`, so exactly 90.0 and -90.0 survive
-    unchanged. This is the boundary where the strict-vs-inclusive
-    distinction matters, and nothing tested it before. See P0.4 in
-    ROADMAP.md and the Architecture Notes _fold entry.
+    _fold uses `a > 90` and `a <= -90`: the inclusive lower boundary means
+    a vertical line and its reverse both return +90, so the docstring's
+    "regardless of point order" claim holds unconditionally.
 
-    CAPTURED, UNVERIFIED: ±90 not folded is the current behavior. Whether
-    it should be (order-independence at the vertical) is an open decision
-    -- see Architecture Notes in ROADMAP.md.
+    VERIFIED: the decision to fold at -90 was made explicitly (Option A in
+    Architecture Notes / ROADMAP.md).
     """
-    assert _fold(90.0) == 90.0       # exactly 90: NOT folded (> 90 is False)
-    assert _fold(-90.0) == -90.0     # exactly -90: NOT folded (< -90 is False)
+    assert _fold(90.0) == 90.0       # exactly +90: NOT folded (> 90 is False)
+    assert _fold(-90.0) == 90.0      # exactly -90: FOLDED to +90 (<= -90)
     # a hair beyond the boundary IS folded
     assert _fold(90.001) == pytest.approx(-89.999)
     assert _fold(-90.001) == pytest.approx(89.999)
