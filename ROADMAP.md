@@ -1577,26 +1577,29 @@ detector windows, thresholds, test coverage, corpus state, and codebase
 structure. No files modified. Findings distributed below; the actionable ones
 first.
 
-#### `faults.py main()` still runs peak localization (0/14)
+#### `faults.py main()` was on peak localization (0/14) — FIXED 2026-08-22
 
-`faults.py:279` calls `detect_phases(wrist_y)` — the bare form, with no
-`torso=` or `hip_x=` — so it runs peak localization, scored **0/14** against
+`faults.py:279` called `detect_phases(wrist_y)` — the bare form, with no
+`torso=` or `hip_x=` — so it ran peak localization, scored **0/14** against
 device labels (see SCOREBOARD above). The app shipped stance-bounded
 localization on 2026-08-20; the Python CLI did not follow. The irony: `torso`
-and `hip_x` are **already collected** in the same detection loop
+and `hip_x` were **already collected** in the same detection loop
 (`faults.py:270-271`) and never passed through.
 
-Same pattern in four other `main()` scripts: `phase_montage.py:71`,
-`swing_phases.py:492`, `body_angles.py:114`, `pose_estimation.py:111` — all
-call bare `detect_phases(wrist_y)`. Every `python src/<module>.py <video>`
-invocation places its anchors using the 0/14 method and measures against the
-walk-in, not the swing.
+**Fixed:** `faults.py:main()` now passes `fps=fps, torso=torso, hip_x=hip_x` to
+`detect_phases`, giving it the same stance-bounded localization the app uses
+(12/14). The detector windows (`_addr_median`, `_window_median`) stay on their
+`BASELINE_FPS` defaults — that seam is held for P0.2. The `fps` passed to
+`detect_phases` is the container fps from `CAP_PROP_FPS`, which equals capture
+fps for all real-time clips (device recordings). For the slow-mo calibration
+clip it differs, and the localization windows will be lighter; that is the same
+`container fps ≠ capture fps` seam already documented. 93 tests pass.
 
-**Not a bug to fix in isolation.** Threading `torso` and `hip_x` through each
-script's detection loop is modest work, but the detection pipeline is what P0.2
-rewrites anyway. Fix all five scripts as part of that work rather than patching
-them piecemeal — and note that the Python CLI's output cannot be compared to the
-app's until they run the same localization.
+**Still on peak localization (four other scripts):** `phase_montage.py:71`,
+`swing_phases.py:492`, `body_angles.py:114`, `pose_estimation.py:111` — all
+call bare `detect_phases(wrist_y)`. These scripts only collect `wrist_y`, so
+threading `torso` and `hip_x` means extending each script's detection loop. Fix
+with P0.2 or when the pose loops are consolidated (see below).
 
 #### Three duplicated pose-detection loops in `src/`
 

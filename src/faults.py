@@ -238,12 +238,18 @@ def main():
 
     with vision.PoseLandmarker.create_from_options(options) as landmarker:
         cap = cv2.VideoCapture(VIDEO_PATH)
-        # CONTAINER fps -- valid for the tempo ratio (frame-based) and timestamps
-        # only. It is NOT the CAPTURE fps the fault/phase windows scale with; for
-        # slow-mo clips they differ (see BASELINE_FPS notes in swing_phases.py).
-        # The detectors below are left on their BASELINE_FPS default until the
-        # corpus supplies a real capture_fps as metadata -- do not pass this fps
-        # into detect_phases or the detectors.
+        # CONTAINER fps -- valid for the tempo ratio (frame-based), timestamps,
+        # and for the LOCALIZATION path (locate_swing / stance_bounds), whose
+        # duration-based windows depend only on frame spacing, not capture rate.
+        # For real-time clips (all device recordings) container fps = capture fps
+        # and everything is correct. For slow-mo clips they differ: the localization
+        # windows cover less real time, and the smoothing is lighter. The slow-mo
+        # case is the calibration clip only -- see BASELINE_FPS in swing_phases.py.
+        #
+        # The DETECTOR windows (_addr_median, _window_median) stay on their
+        # BASELINE_FPS default: they were calibrated at 240 fps, and that seam is
+        # held until P0.2 threads a real capture_fps. Do not pass this fps into
+        # the four detector functions.
         fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), VIDEO_PATH)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -276,10 +282,12 @@ def main():
 
         cap.release()
 
-    phases = detect_phases(wrist_y)
+    phases = detect_phases(wrist_y, fps=fps, torso=torso, hip_x=hip_x)
     # Refuse outright rather than printing verdicts computed from a trajectory
     # that cannot be a swing. Partial output is the same failure in a smaller
     # costume: it invites the surviving numbers to be read as meaningful.
+    # With hip_x, detect_phases returns None when no stance is found -- that
+    # is the answer ("never stood still, so no swing"), not a gap.
     reason = implausible_swing(phases)
     if reason:
         print(f"No swing detected - {reason}. No fault verdicts.")
