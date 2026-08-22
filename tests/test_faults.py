@@ -254,6 +254,28 @@ def test_clean_swing_produces_zero_faults():
     assert not posture['flagged']
 
 
+def test_reverse_pivot_tiebreak_static_hips():
+    """Pin the >= tie-break: when hips don't move, target_sign is +1.0.
+
+    faults.py:140 uses `hip_fin >= hip_addr` to resolve the direction "toward
+    target". When the golfer's hips are perfectly stationary (hip_fin ==
+    hip_addr), equality falls on the positive side (target_sign = +1.0,
+    meaning "target is to the right"). This was P0.4-open -- the one place
+    equality resolves to the positive side, and the thing that decides which
+    way "toward target" points when the hips don't translate.
+
+    CAPTURED, UNVERIFIED: target_sign = +1.0 when hip_fin == hip_addr.
+    Confirm the convention is correct when recalibrating (P0.2).
+    """
+    # hip_x constant everywhere -> hip_fin == hip_addr exactly -> >= path -> +1.0
+    head_x = _with_windows(0.0, {(17, 23): 12.0})  # non-zero to produce a measurable reverse
+    head_y = _const(50.0)
+    hip_x = _const(0.0)
+    hip_y = _const(200.0)
+    res = F.detect_reverse_pivot(head_x, head_y, hip_x, hip_y, TORSO, PHASES)
+    assert res['target_sign'] == 1.0
+
+
 def test_detectors_return_none_without_phases():
     """No phases (undetectable swing) -> detectors return None, not a crash."""
     assert F.detect_head_movement([], [], [], None) is None

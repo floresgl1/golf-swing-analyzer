@@ -402,7 +402,10 @@ dart    straighten = 12.001000000000001
 
 One ULP. It cannot change a verdict on any real swing — a golfer's spine angle is not measured to 15 significant figures — so this is recorded rather than fixed, so that the parity checker does not flag it as drift and a future session does not rediscover it.
 
-**Still open in P0.4:** `faults.py:139`'s `hip_fin >= hip_addr` tie-break — the one place equality resolves to the positive side, and the thing that decides which way "toward target" points — is still unverified, and `_fold`'s ±90 boundary (Architecture Notes) is still untested. Both are equality-convention gaps of the same family.
+**Equality-convention gaps — CLOSED 2026-08-22.** Both were characterization-tested:
+
+- `faults.py:139`'s `hip_fin >= hip_addr` tie-break: `test_reverse_pivot_tiebreak_static_hips` in `tests/test_faults.py` pins that static hips (equality) resolve to `target_sign = +1.0`. CAPTURED, UNVERIFIED — confirm the convention is correct during P0.2 recalibration.
+- `_fold`'s ±90 boundary: `test_fold_boundary_at_pm90` in `tests/test_body_angles.py` pins that exactly ±90 is NOT folded (strict `> 90` / `< -90`), while a hair beyond IS folded. Ties into the Architecture Notes `_fold` order-independence open decision.
 
 ### P1 — Flutter Device Testing
 **Status**: In progress — app installed via TestFlight 2026-08-17, first finding below
