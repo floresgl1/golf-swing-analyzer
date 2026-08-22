@@ -1,13 +1,10 @@
 import cv2
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
 import numpy as np
 import math
 import sys
 
-from swing_phases import (detect_phases, implausible_swing, require_valid_fps,
-                          swing_tempo, LEAD_WRIST,
+from swing_phases import (detect_phases, implausible_swing,
+                          swing_tempo,
                           BASELINE_FPS, frames_for,
                           IMPACT_RADIUS_S, DEFAULT_RADIUS_S, ADDRESS_OFFSET_S)
 from drill_recommender import print_recommendations
@@ -228,59 +225,40 @@ def main():
               f"{', '.join(FAULT_METRICS)}. Not recording a focus fault.")
         targeting = None
 
-    base_options = python.BaseOptions(model_asset_path='data/pose_landmarker.task')
-    options = vision.PoseLandmarkerOptions(
-        base_options=base_options,
-        running_mode=vision.RunningMode.VIDEO
-    )
+    from pose_pipeline import run_pose_detection
+    result = run_pose_detection(VIDEO_PATH)
+    # CONTAINER fps -- valid for the tempo ratio (frame-based), timestamps,
+    # and for the LOCALIZATION path (locate_swing / stance_bounds), whose
+    # duration-based windows depend only on frame spacing, not capture rate.
+    # For real-time clips (all device recordings) container fps = capture fps
+    # and everything is correct. For slow-mo clips they differ: the localization
+    # windows cover less real time, and the smoothing is lighter. The slow-mo
+    # case is the calibration clip only -- see BASELINE_FPS in swing_phases.py.
+    #
+    # The DETECTOR windows (_addr_median, _window_median) stay on their
+    # BASELINE_FPS default: they were calibrated at 240 fps, and that seam is
+    # held until P0.2 threads a real capture_fps. Do not pass this fps into
+    # the four detector functions.
+    fps = result.fps
+    width, height = result.width, result.height
+    wrist_y = result.wrist_y()
 
-    eye_x, eye_y, sh_x, sh_y, hip_x, hip_y, torso, wrist_y = ([] for _ in range(8))
-
-    with vision.PoseLandmarker.create_from_options(options) as landmarker:
-        cap = cv2.VideoCapture(VIDEO_PATH)
-        # CONTAINER fps -- valid for the tempo ratio (frame-based), timestamps,
-        # and for the LOCALIZATION path (locate_swing / stance_bounds), whose
-        # duration-based windows depend only on frame spacing, not capture rate.
-        # For real-time clips (all device recordings) container fps = capture fps
-        # and everything is correct. For slow-mo clips they differ: the localization
-        # windows cover less real time, and the smoothing is lighter. The slow-mo
-        # case is the calibration clip only -- see BASELINE_FPS in swing_phases.py.
-        #
-        # The DETECTOR windows (_addr_median, _window_median) stay on their
-        # BASELINE_FPS default: they were calibrated at 240 fps, and that seam is
-        # held until P0.2 threads a real capture_fps. Do not pass this fps into
-        # the four detector functions.
-        fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), VIDEO_PATH)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        frame_count = 0
-
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-            results = landmarker.detect_for_video(mp_image, int(frame_count * 1000 / fps))
-            frame_count += 1
-
-            if results.pose_landmarks:
-                lm = results.pose_landmarks[0]
-                eye_x.append((lm[LEFT_EYE].x + lm[RIGHT_EYE].x) / 2 * width)
-                eye_y.append((lm[LEFT_EYE].y + lm[RIGHT_EYE].y) / 2 * height)
-                sx = (lm[LEFT_SHOULDER].x + lm[RIGHT_SHOULDER].x) / 2 * width
-                sy = (lm[LEFT_SHOULDER].y + lm[RIGHT_SHOULDER].y) / 2 * height
-                hx = (lm[LEFT_HIP].x + lm[RIGHT_HIP].x) / 2 * width
-                hy = (lm[LEFT_HIP].y + lm[RIGHT_HIP].y) / 2 * height
-                sh_x.append(sx); sh_y.append(sy)
-                hip_x.append(hx); hip_y.append(hy)
-                torso.append(math.dist((sx, sy), (hx, hy)))
-                wrist_y.append(lm[LEAD_WRIST].y)
-            else:
-                for lst in (eye_x, eye_y, sh_x, sh_y, hip_x, hip_y, torso, wrist_y):
-                    lst.append(np.nan)
-
-        cap.release()
+    # Extract the series the four detectors need from the cached landmarks.
+    eye_x, eye_y, sh_x, sh_y, hip_x, hip_y, torso = ([] for _ in range(7))
+    for lm in result.landmarks:
+        if lm is not None:
+            eye_x.append((lm[LEFT_EYE].x + lm[RIGHT_EYE].x) / 2 * width)
+            eye_y.append((lm[LEFT_EYE].y + lm[RIGHT_EYE].y) / 2 * height)
+            sx = (lm[LEFT_SHOULDER].x + lm[RIGHT_SHOULDER].x) / 2 * width
+            sy = (lm[LEFT_SHOULDER].y + lm[RIGHT_SHOULDER].y) / 2 * height
+            hx = (lm[LEFT_HIP].x + lm[RIGHT_HIP].x) / 2 * width
+            hy = (lm[LEFT_HIP].y + lm[RIGHT_HIP].y) / 2 * height
+            sh_x.append(sx); sh_y.append(sy)
+            hip_x.append(hx); hip_y.append(hy)
+            torso.append(math.dist((sx, sy), (hx, hy)))
+        else:
+            for lst in (eye_x, eye_y, sh_x, sh_y, hip_x, hip_y, torso):
+                lst.append(np.nan)
 
     phases = detect_phases(wrist_y, fps=fps, torso=torso, hip_x=hip_x)
     # Refuse outright rather than printing verdicts computed from a trajectory

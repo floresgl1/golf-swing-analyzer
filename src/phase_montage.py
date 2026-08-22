@@ -1,10 +1,7 @@
 import cv2
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
 import matplotlib.pyplot as plt
 
-from swing_phases import detect_phases, require_valid_fps, LEAD_WRIST
+from swing_phases import detect_phases
 
 VIDEO_PATH = 'data/videos/videoplayback.mp4'
 OUTPUT_PATH = 'output/swing_phases_montage.png'
@@ -29,43 +26,11 @@ def draw_skeleton(frame, landmarks):
 
 
 def main():
-    # Step 1: Configure the PoseLandmarker
-    base_options = python.BaseOptions(model_asset_path='data/pose_landmarker.task')
-    options = vision.PoseLandmarkerOptions(
-        base_options=base_options,
-        running_mode=vision.RunningMode.VIDEO
-    )
-
-    # Step 2: Detect the pose across all frames, caching landmarks + wrist trajectory
-    per_frame_landmarks = []
-    wrist_y = []
-
-    with vision.PoseLandmarker.create_from_options(options) as landmarker:
-        cap = cv2.VideoCapture(VIDEO_PATH)
-        fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), VIDEO_PATH)
-        frame_count = 0
-
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-
-            timestamp_ms = int(frame_count * 1000 / fps)
-            results = landmarker.detect_for_video(mp_image, timestamp_ms)
-            frame_count += 1
-
-            if results.pose_landmarks:
-                landmarks = results.pose_landmarks[0]
-                per_frame_landmarks.append(landmarks)
-                wrist_y.append(landmarks[LEAD_WRIST].y)
-            else:
-                per_frame_landmarks.append(None)
-                wrist_y.append(float('nan'))
-
-        cap.release()
+    from pose_pipeline import run_pose_detection
+    result = run_pose_detection(VIDEO_PATH)
+    per_frame_landmarks = result.landmarks
+    wrist_y = result.wrist_y()
+    fps = result.fps
 
     # Step 3: Detect phases and pick the four iconic checkpoint frames
     phases = detect_phases(wrist_y)

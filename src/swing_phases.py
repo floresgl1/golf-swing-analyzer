@@ -1,7 +1,3 @@
-import cv2
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
 import matplotlib.pyplot as plt
 import math
 import numpy as np
@@ -443,52 +439,17 @@ def swing_tempo(phases, fps):
 
 
 def main():
-    # Step 1: Configure the PoseLandmarker
-    base_options = python.BaseOptions(model_asset_path='data/pose_landmarker.task')
-    options = vision.PoseLandmarkerOptions(
-        base_options=base_options,
-        running_mode=vision.RunningMode.VIDEO
-    )
+    from pose_pipeline import run_pose_detection
+    result = run_pose_detection('data/videos/videoplayback.mp4')
+    wrist_y = result.wrist_y()
+    # CONTAINER fps: correct for the tempo RATIO (frame-based, so it cancels)
+    # and for timestamps, but NOT the CAPTURE fps the windows scale with --
+    # for slow-mo clips they differ (see BASELINE_FPS notes). detect_phases
+    # is therefore left on its BASELINE_FPS default; wire a real capture_fps
+    # here once the corpus carries it as metadata.
+    fps = result.fps
 
-    # Collect the lead-wrist y-coordinate from every frame
-    wrist_y = []
-
-    # Step 2: Create the landmarker and open the video
-    with vision.PoseLandmarker.create_from_options(options) as landmarker:
-        cap = cv2.VideoCapture('data/videos/videoplayback.mp4')
-        # CONTAINER fps: correct for the tempo RATIO (frame-based, so it cancels)
-        # and for timestamps, but NOT the CAPTURE fps the windows scale with --
-        # for slow-mo clips they differ (see BASELINE_FPS notes). detect_phases
-        # is therefore left on its BASELINE_FPS default; wire a real capture_fps
-        # here once the corpus carries it as metadata.
-        fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), 'data/videos/videoplayback.mp4')
-        frame_count = 0
-
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            # Step 3: Convert to MediaPipe Image (BGR → RGB, then wrap)
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-
-            # Step 4: Calculate timestamp and detect
-            timestamp_ms = int(frame_count * 1000 / fps)
-            results = landmarker.detect_for_video(mp_image, timestamp_ms)
-            frame_count += 1
-
-            # Step 5: Record the lead-wrist y (normalized 0..1).
-            # Append nan when no pose is found so the frame still occupies an
-            # x-axis slot and the plot shows a gap instead of shifting everything.
-            if results.pose_landmarks:
-                wrist_y.append(results.pose_landmarks[0][LEAD_WRIST].y)
-            else:
-                wrist_y.append(float('nan'))
-
-        cap.release()
-
-    # Step 6: Detect the swing phases from the trajectory
+    # Detect the swing phases from the trajectory
     phases = detect_phases(wrist_y)
     n = len(wrist_y)
 
