@@ -1570,6 +1570,117 @@ these belong to increment two:
 
 The camera half is landed and green (run on `main` @ `067cab2`).
 
+### Python Backend Audit (2026-08-22)
+
+Read-only audit of `src/`, `tests/`, and `validation/` — eight tasks covering
+detector windows, thresholds, test coverage, corpus state, and codebase
+structure. No files modified. Findings distributed below; the actionable ones
+first.
+
+#### `faults.py main()` still runs peak localization (0/14)
+
+`faults.py:279` calls `detect_phases(wrist_y)` — the bare form, with no
+`torso=` or `hip_x=` — so it runs peak localization, scored **0/14** against
+device labels (see SCOREBOARD above). The app shipped stance-bounded
+localization on 2026-08-20; the Python CLI did not follow. The irony: `torso`
+and `hip_x` are **already collected** in the same detection loop
+(`faults.py:270-271`) and never passed through.
+
+Same pattern in four other `main()` scripts: `phase_montage.py:71`,
+`swing_phases.py:492`, `body_angles.py:114`, `pose_estimation.py:111` — all
+call bare `detect_phases(wrist_y)`. Every `python src/<module>.py <video>`
+invocation places its anchors using the 0/14 method and measures against the
+walk-in, not the swing.
+
+**Not a bug to fix in isolation.** Threading `torso` and `hip_x` through each
+script's detection loop is modest work, but the detection pipeline is what P0.2
+rewrites anyway. Fix all five scripts as part of that work rather than patching
+them piecemeal — and note that the Python CLI's output cannot be compared to the
+app's until they run the same localization.
+
+#### Three duplicated pose-detection loops in `src/`
+
+`faults.py`, `pose_estimation.py`, and `phase_montage.py` each contain their
+own copy of the MediaPipe detection loop (open video → iterate frames → call
+`detect_for_video` → collect landmarks). `test_pose_estimation.py` has a fourth
+copy for testing; its docstring explicitly says this is "a deliberate,
+self-contained copy" — correct for the test. The three `src/` copies are
+structurally identical, differing only in which landmark series they extract.
+
+No shared `pose_pipeline.py` exists. Not a correctness issue — all three use
+the same model, the same `RunningMode.VIDEO`, and the same timestamp formula.
+Worth consolidating when the detection loop next changes: P0.2's onset detection
+adds a new series to collect, which would otherwise be added to three files.
+
+#### Corpus has no four-event labels
+
+`validation/device_corpus/labels.json` holds 20 clips (14 swing, 3 no-swing, 3
+unlabelled). Every swing clip carries only a coarse `swing_start_s` label (~1 s
+precision). The four-event fields — `takeaway_s`, `top_s`, `impact_s`,
+`finish_s` — are **all null** on every clip.
+
+This does not block P0.1 collection or the SCOREBOARD's coarse scoring. It does
+mean **P0.2's recalibration cannot validate per-event accuracy** from the
+current corpus alone — it can confirm the detector finds the right region but
+not that `impact` is placed correctly within it. Four-event labels require
+frame-accurate scrubbing (the Photos export path already supports this). Add
+them to the P0.1 spec as a second-pass enrichment, not a collection blocker.
+
+#### Python↔Dart record-shape divergence — specifics measured
+
+Already noted under Phase 0. The audit confirms: Python `swing_history.py`
+writes a single `{"sessions": [...]}` JSON document — **no JSONL support**, no
+`capture_session_id`, no `participant_id`, no `frame_series`, no
+`measurement_basis` stamps, and no `clip_name`. Atomic writes via temp-file +
+`os.replace`; corrupt recovery renames to `*.corrupt.bak`. The Dart store writes
+append-only JSONL with all of those fields. Field names are snake_case and
+aligned where they overlap, so a converter stays trivial, but the gap will widen
+as the app accumulates corpus fields. Closing it is not urgent — the Python side
+is a research tool, not a data source — but note that round-tripping a
+Dart-exported corpus through Python's `swing_history.py` is not possible today.
+
+#### Confirmations (no action required)
+
+**P0.3 confirmed complete.** Line-level audit: zero frame-count literals remain
+in `faults.py`. All four duration constants — `SMOOTH_WINDOW_S` (`5/240`),
+`IMPACT_RADIUS_S` (`2/240`), `ADDRESS_OFFSET_S` (`10/240`), `DEFAULT_RADIUS_S`
+(`3/240`) — resolve via `frames_for(seconds, fps)` at runtime. The held Dart
+divergence is intact (`faults.dart` still uses inline frame-count literals:
+`takeaway - 10`, `radius: 2`, `radius: 3`; `detectPhases`'s `smooth = 5`).
+
+**All five thresholds match Python↔Dart exactly.** No drift.
+
+```
+sway          0.13    faults.py:20   ↔  faults.dart:19
+dip           0.25    faults.py:21   ↔  faults.dart:22
+reverse pivot 0.12    faults.py:22   ↔  faults.dart:24
+early ext     0.10    faults.py:23   ↔  faults.dart:28
+posture      12.0°    faults.py:24   ↔  faults.dart:31
+```
+
+**Test suite: 56 functions, 7 files, no blind spots beyond what is already
+recorded.** No `xfail`, zero `TODO`/`FIXME`/`HACK`/`NOCOMMIT` anywhere in
+`src/`, `tests/`, or `validation/`. The only skips are in
+`test_pose_estimation.py` — `skipif` when the ~30.6 MB model is absent,
+`pytest.skip` when the wrong variant is installed — both correct guards for a
+gitignored binary.
+
+**`body_angles.py` is plot-only code.** Not imported by any production module
+(`faults.py`, `swing_phases.py`, `drill_recommender.py`). Its `line_angle`,
+`_fold`, and `smooth_line_angles` are used only by its own `main()` for
+visualization and by `tests/`. The `_fold` boundary defect (Architecture Notes)
+therefore has no production impact.
+
+**No `__main__.py`, no unified entry point.** Each `src/` module has its own
+`if __name__ == '__main__':` block. Consistent with the "research tool" framing;
+not a problem to fix. Recorded so a CLI unification is not proposed as cleanup
+before P0.2.
+
+**`drill_recommender.py` loads from `data/drills.json` at runtime** — not
+hardcoded. `FAULT_LABELS` maps fault ids to display names; `recommend_drills`
+filters by `drill['fault'] == fault_id`, sorted by `DIFFICULTY_ORDER`.
+Structurally clean.
+
 ---
 
 ## Future Feature Roadmap
