@@ -1601,22 +1601,27 @@ clip it differs, and the localization windows will be lighter; that is the same
 **Still on peak localization (four other scripts):** `phase_montage.py:71`,
 `swing_phases.py:492`, `body_angles.py:114`, `pose_estimation.py:111` — all
 call bare `detect_phases(wrist_y)`. These scripts only collect `wrist_y`, so
-threading `torso` and `hip_x` means extending each script's detection loop. Fix
-with P0.2 or when the pose loops are consolidated (see below).
+threading `torso` and `hip_x` means extending each script's detection loop.
+Now that the pose loops are consolidated into `pose_pipeline.py` (see below),
+the full landmark cache is available — extending the extraction is trivial.
+Fix with P0.2.
 
-#### Three duplicated pose-detection loops in `src/`
+#### Five duplicated pose-detection loops in `src/` — CONSOLIDATED 2026-08-22
 
-`faults.py`, `pose_estimation.py`, and `phase_montage.py` each contain their
-own copy of the MediaPipe detection loop (open video → iterate frames → call
-`detect_for_video` → collect landmarks). `test_pose_estimation.py` has a fourth
-copy for testing; its docstring explicitly says this is "a deliberate,
-self-contained copy" — correct for the test. The three `src/` copies are
-structurally identical, differing only in which landmark series they extract.
+`faults.py`, `pose_estimation.py`, `phase_montage.py`, `swing_phases.py`, and
+`body_angles.py` each contained their own copy of the MediaPipe detection loop
+(open video → iterate frames → call `detect_for_video` → collect landmarks).
+`test_pose_estimation.py` has a sixth copy for testing; its docstring explicitly
+says this is "a deliberate, self-contained copy" — correct for the test and
+deliberately NOT a consumer of the shared module.
 
-No shared `pose_pipeline.py` exists. Not a correctness issue — all three use
-the same model, the same `RunningMode.VIDEO`, and the same timestamp formula.
-Worth consolidating when the detection loop next changes: P0.2's onset detection
-adds a new series to collect, which would otherwise be added to three files.
+All five `src/` loops are now replaced by a single `run_pose_detection()` in
+`src/pose_pipeline.py`, which returns a `PoseResult` (cached per-frame
+landmarks + fps / width / height). Each script's `main()` extracts only the
+series it needs from the cached landmarks. The MediaPipe dependency
+(`cv2`/`mediapipe` imports) is isolated behind `pose_pipeline`; files that
+no longer touch MediaPipe directly (`swing_phases.py`, `body_angles.py`)
+had those imports removed.
 
 #### Corpus has no four-event labels
 

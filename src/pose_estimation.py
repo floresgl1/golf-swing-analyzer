@@ -1,9 +1,6 @@
 import cv2
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
 
-from swing_phases import detect_phases, require_valid_fps, LEAD_WRIST, LEAD_SIDE
+from swing_phases import detect_phases, LEAD_SIDE
 
 # MediaPipe pose landmark indices for the joints we care about
 LEFT_SHOULDER = 11
@@ -64,48 +61,13 @@ def phase_for_frame(i, phases):
 
 
 def main():
-    # Step 1: Configure the PoseLandmarker
-    base_options = python.BaseOptions(model_asset_path='data/pose_landmarker.task')
-    options = vision.PoseLandmarkerOptions(
-        base_options=base_options,
-        running_mode=vision.RunningMode.VIDEO
-    )
-
-    # ---- Pass 1: detect the pose for every frame and collect the wrist trajectory ----
-    # Cache each frame's landmarks so the second pass can redraw without re-detecting.
-    per_frame_landmarks = []
-    wrist_y = []
-
-    with vision.PoseLandmarker.create_from_options(options) as landmarker:
-        cap = cv2.VideoCapture(VIDEO_PATH)
-        fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), VIDEO_PATH)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        frame_count = 0
-
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            # Convert to MediaPipe Image (BGR → RGB, then wrap)
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-
-            # Detect and cache the landmarks + lead-wrist height
-            timestamp_ms = int(frame_count * 1000 / fps)
-            results = landmarker.detect_for_video(mp_image, timestamp_ms)
-            frame_count += 1
-
-            if results.pose_landmarks:
-                landmarks = results.pose_landmarks[0]
-                per_frame_landmarks.append(landmarks)
-                wrist_y.append(landmarks[LEAD_WRIST].y)
-            else:
-                per_frame_landmarks.append(None)
-                wrist_y.append(float('nan'))
-
-        cap.release()
+    from pose_pipeline import run_pose_detection
+    result = run_pose_detection(VIDEO_PATH)
+    per_frame_landmarks = result.landmarks
+    wrist_y = result.wrist_y()
+    fps = result.fps
+    width = result.width
+    height = result.height
 
     # ---- Detect the swing phases from the collected trajectory ----
     phases = detect_phases(wrist_y)

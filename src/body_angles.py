@@ -1,12 +1,8 @@
-import cv2
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
 import matplotlib.pyplot as plt
 import numpy as np
 import math
 
-from swing_phases import detect_phases, require_valid_fps, LEAD_WRIST
+from swing_phases import detect_phases
 
 # MediaPipe landmark indices
 LEFT_SHOULDER = 11
@@ -66,50 +62,29 @@ def smooth_line_angles(vx, vy, w=9):
 
 
 def main():
-    # Configure the PoseLandmarker
-    base_options = python.BaseOptions(model_asset_path='data/pose_landmarker.task')
-    options = vision.PoseLandmarkerOptions(
-        base_options=base_options,
-        running_mode=vision.RunningMode.VIDEO
-    )
+    from pose_pipeline import run_pose_detection
+    result = run_pose_detection(VIDEO_PATH)
+    fps = result.fps
+    width, height = result.width, result.height
+    wrist_y = result.wrist_y()
 
-    # Per-frame line vectors (pixels), with y negated so "up" is positive
+    # Extract shoulder and hip line vectors (pixels), y negated so "up" is positive
     sx, sy, hx, hy = [], [], [], []
-    wrist_y = []   # collected only so we can reuse detect_phases for context
-
-    with vision.PoseLandmarker.create_from_options(options) as landmarker:
-        cap = cv2.VideoCapture(VIDEO_PATH)
-        fps = require_valid_fps(cap.get(cv2.CAP_PROP_FPS), VIDEO_PATH)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        frame_count = 0
-
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-            timestamp_ms = int(frame_count * 1000 / fps)
-            results = landmarker.detect_for_video(mp_image, timestamp_ms)
-            frame_count += 1
-
-            if results.pose_landmarks:
-                lm = results.pose_landmarks[0]
-                lsx, lsy = lm[LEFT_SHOULDER].x * width, lm[LEFT_SHOULDER].y * height
-                rsx, rsy = lm[RIGHT_SHOULDER].x * width, lm[RIGHT_SHOULDER].y * height
-                lhx, lhy = lm[LEFT_HIP].x * width, lm[LEFT_HIP].y * height
-                rhx, rhy = lm[RIGHT_HIP].x * width, lm[RIGHT_HIP].y * height
-                sx.append(rsx - lsx); sy.append(-(rsy - lsy))
-                hx.append(rhx - lhx); hy.append(-(rhy - lhy))
-                wrist_y.append(lm[LEAD_WRIST].y)
-            else:
-                sx.append(np.nan); sy.append(np.nan)
-                hx.append(np.nan); hy.append(np.nan)
-                wrist_y.append(np.nan)
-
-        cap.release()
+    for lm in result.landmarks:
+        if lm is not None:
+            lsx = lm[LEFT_SHOULDER].x * width
+            lsy = lm[LEFT_SHOULDER].y * height
+            rsx = lm[RIGHT_SHOULDER].x * width
+            rsy = lm[RIGHT_SHOULDER].y * height
+            lhx = lm[LEFT_HIP].x * width
+            lhy = lm[LEFT_HIP].y * height
+            rhx = lm[RIGHT_HIP].x * width
+            rhy = lm[RIGHT_HIP].y * height
+            sx.append(rsx - lsx); sy.append(-(rsy - lsy))
+            hx.append(rhx - lhx); hy.append(-(rhy - lhy))
+        else:
+            sx.append(np.nan); sy.append(np.nan)
+            hx.append(np.nan); hy.append(np.nan)
 
     phases = detect_phases(wrist_y)
 
