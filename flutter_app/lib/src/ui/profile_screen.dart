@@ -254,7 +254,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Your profile')),
+      appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
@@ -267,120 +267,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 style: TextStyle(color: theme.colorScheme.error),
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-            child:
-                Text('What a coach has told you', style: theme.textTheme.titleMedium),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Text(
-              'If a coach has pointed out any of these, let us know — '
-              'it helps us check whether the app is seeing the same thing. '
-              'This won\'t change your reports.',
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
-          for (final faultId in coachReportFaultIds)
-            _CoachReportRow(
-              label: faultLabels[faultId] ?? faultId,
-              value: _participant.coachReports[faultId],
-              onChanged: (value) => _setReport(faultId, value),
-            ),
-          const Divider(height: 32),
 
-          // Calibration mode — corpus instrumentation, not a golfer feature.
-          // Tucked in Profile so it's accessible without cluttering the
-          // viewfinder. See ROADMAP.md item 2.
+          // -----------------------------------------------------------------
+          // Recordings — the golfer's own clips, front and center.
+          // -----------------------------------------------------------------
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-            child:
-                Text('Calibration mode', style: theme.textTheme.titleMedium),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-            child: Text(
-              'Record a swing with one fault exaggerated on purpose, so we can '
-              'check the detectors are seeing it.',
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
-          SwitchListTile(
-            title: const Text('Calibration swing'),
-            subtitle: _participant.calibrationMode
-                ? Text(
-                    'Next swing will be recorded as a calibration for '
-                    '"${faultLabels[_participant.calibrationFault ?? faultIds.first] ?? faultIds.first}".',
-                  )
-                : const Text('Off — swings are recorded normally.'),
-            value: _participant.calibrationMode,
-            onChanged: widget.store == null
-                ? null
-                : (value) => _setCalibration(enabled: value),
-          ),
-          if (_participant.calibrationMode)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: DropdownButtonFormField<String>(
-                value: _participant.calibrationFault ?? faultIds.first,
-                decoration: const InputDecoration(
-                  labelText: 'Fault to exaggerate',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  for (final id in faultIds)
-                    DropdownMenuItem(
-                      value: id,
-                      child: Text(faultLabels[id] ?? id),
-                    ),
-                ],
-                onChanged: widget.store == null
-                    ? null
-                    : (value) {
-                        if (value != null) {
-                          _setCalibration(enabled: true, fault: value);
-                        }
-                      },
-              ),
-            ),
-          const Divider(height: 32),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text('Share your swings', style: theme.textTheme.titleMedium),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Text(
-              'Your swings stay on this phone — nothing is uploaded. '
-              'Share the file whenever you\'re ready.',
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: FilledButton.icon(
-              key: _exportButtonKey,
-              onPressed: _exporting ? null : _export,
-              icon: const Icon(Icons.ios_share),
-              label: Text(_exporting ? 'Preparing…' : 'Share swing history'),
-            ),
-          ),
-          const Divider(height: 32),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text('Saved videos', style: theme.textTheme.titleMedium),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text('Recordings', style: theme.textTheme.titleMedium),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
               _clips == null
-                  ? 'Every swing you record is kept on this phone so it can be '
-                      'watched back. Nothing is uploaded.'
+                  ? 'Every swing you record is kept on this phone. '
+                      'Nothing is uploaded.'
                   : '$_clipCount recording${_clipCount == 1 ? '' : 's'}, '
-                      '${formatClipBytes(_clipBytes)}. Kept on this phone, '
-                      'never uploaded. Tap one to open it — "Save Video" puts '
-                      'it in Photos, where you can scrub through it frame by '
-                      'frame.',
+                      '${formatClipBytes(_clipBytes)}. '
+                      'Tap one to open it in Photos for frame-by-frame playback.',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -396,14 +299,116 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: OutlinedButton.icon(
-              onPressed:
-                  _deletingClips || _clipCount == 0 ? null : _deleteClips,
-              icon: const Icon(Icons.delete_outline),
-              label: Text(_deletingClips ? 'Deleting…' : 'Delete saved videos'),
+            child: Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed:
+                      _deletingClips || _clipCount == 0 ? null : _deleteClips,
+                  icon: const Icon(Icons.delete_outline),
+                  label:
+                      Text(_deletingClips ? 'Deleting…' : 'Delete all videos'),
+                ),
+                Gap.hsm,
+                FilledButton.icon(
+                  key: _exportButtonKey,
+                  onPressed: _exporting ? null : _export,
+                  icon: const Icon(Icons.ios_share),
+                  label:
+                      Text(_exporting ? 'Preparing…' : 'Export swing data'),
+                ),
+              ],
             ),
           ),
           const Divider(height: 32),
+
+          // -----------------------------------------------------------------
+          // Help improve the app — coach reports & calibration behind an
+          // expansion tile so research controls don't dominate the page.
+          // -----------------------------------------------------------------
+          Theme(
+            data: theme.copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              leading: const Icon(Icons.science_outlined, size: 20),
+              title: const Text('Help improve the app'),
+              childrenPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              children: [
+                // Coach reports
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'If a coach has pointed out any of these faults, let us '
+                    'know — it helps us check whether the app is seeing '
+                    'the same thing. This won\'t change your reports.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                for (final faultId in coachReportFaultIds)
+                  _CoachReportRow(
+                    label: faultLabels[faultId] ?? faultId,
+                    value: _participant.coachReports[faultId],
+                    onChanged: (value) => _setReport(faultId, value),
+                  ),
+                Gap.lg,
+                // Calibration mode
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Calibration mode',
+                      style: theme.textTheme.titleSmall),
+                ),
+                Gap.xs,
+                Text(
+                  'Record a swing with one fault exaggerated on purpose '
+                  'so we can check the detectors are seeing it.',
+                  style: theme.textTheme.bodySmall,
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Calibration swing'),
+                  subtitle: _participant.calibrationMode
+                      ? Text(
+                          'Next swing recorded as calibration for '
+                          '"${faultLabels[_participant.calibrationFault ?? faultIds.first] ?? faultIds.first}".',
+                        )
+                      : const Text('Off — swings recorded normally.'),
+                  value: _participant.calibrationMode,
+                  onChanged: widget.store == null
+                      ? null
+                      : (value) => _setCalibration(enabled: value),
+                ),
+                if (_participant.calibrationMode)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: DropdownButtonFormField<String>(
+                      value: _participant.calibrationFault ?? faultIds.first,
+                      decoration: const InputDecoration(
+                        labelText: 'Fault to exaggerate',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        for (final id in faultIds)
+                          DropdownMenuItem(
+                            value: id,
+                            child: Text(faultLabels[id] ?? id),
+                          ),
+                      ],
+                      onChanged: widget.store == null
+                          ? null
+                          : (value) {
+                              if (value != null) {
+                                _setCalibration(enabled: true, fault: value);
+                              }
+                            },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const Divider(height: 32),
+
+          // -----------------------------------------------------------------
+          // About — version, anonymous ID, at the very bottom.
+          // -----------------------------------------------------------------
           _DiagnosticsSection(participantId: _participant.id),
         ],
       ),
@@ -468,7 +473,7 @@ class _DiagnosticsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Diagnostics', style: theme.textTheme.titleMedium),
+          Text('About', style: theme.textTheme.titleMedium),
           Gap.sm,
           Row(
             children: [
