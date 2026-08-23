@@ -70,3 +70,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/drills.json
+    # Demo clips for corrective drills. The directory is declared now so
+    # clips drop in without a pubspec edit — just add the .mp4 and fill
+    # in the "media" field in drills.json.
+    - assets/drills/

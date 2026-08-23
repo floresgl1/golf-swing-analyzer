@@ -16,6 +16,11 @@ class Drill {
   /// Optional gear; empty or "none" means no equipment needed.
   final String equipment;
 
+  /// Asset path to a short demo clip (e.g. "drills/head_against_wall.mp4").
+  /// Empty when no clip has been filmed yet. The app ships a placeholder in
+  /// that case — the container is ready before the content.
+  final String media;
+
   const Drill({
     required this.id,
     required this.name,
@@ -23,6 +28,7 @@ class Drill {
     required this.description,
     required this.difficulty,
     required this.equipment,
+    this.media = '',
   });
 
   factory Drill.fromJson(Map<String, dynamic> json) => Drill(
@@ -32,9 +38,13 @@ class Drill {
         description: (json['description'] ?? '') as String,
         difficulty: (json['difficulty'] ?? '') as String,
         equipment: (json['equipment'] ?? '') as String,
+        media: (json['media'] ?? '') as String,
       );
 
   /// True when this drill calls for equipment worth surfacing to the golfer.
   bool get needsEquipment =>
       equipment.trim().isNotEmpty && equipment.trim().toLowerCase() != 'none';
+
+  /// True when a demo clip is bundled for this drill.
+  bool get hasMedia => media.trim().isNotEmpty;
 }

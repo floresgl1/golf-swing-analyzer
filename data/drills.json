@@ -1,5 +1,5 @@
 {
-  "_comment": "Golf drill library. Each drill maps to ONE swing fault. To add a drill, copy an existing block inside the 'drills' list and edit the fields. Keep the fields exactly as shown: 'fault' must be one of head_sway, reverse_pivot, early_extension, loss_of_posture. 'difficulty' must be one of beginner, intermediate, advanced. 'equipment' is optional (use \"\" or 'None' if no gear is needed).",
+  "_comment": "Golf drill library. Each drill maps to ONE swing fault. To add a drill, copy an existing block inside the 'drills' list and edit the fields. Keep the fields exactly as shown: 'fault' must be one of head_sway, reverse_pivot, early_extension, loss_of_posture. 'difficulty' must be one of beginner, intermediate, advanced. 'equipment' is optional (use \"\" or 'None' if no gear is needed). 'media' is an optional asset path to a short demo clip (e.g. 'drills/head_against_wall.mp4'); leave empty until the clip is filmed.",
   "drills": [
     {
       "id": "head_against_wall",
@@ -7,7 +7,8 @@
       "fault": "head_sway",
       "description": "Set up in your golf posture with the top of your head lightly touching a wall. Make slow backswings, keeping your head in contact with the wall the whole way to the top. If your head slides off the wall you are swaying. Do 10 reps feeling the head stay 'quiet' over the ball.",
       "difficulty": "beginner",
-      "equipment": "A wall"
+      "equipment": "A wall",
+      "media": ""
     },
     {
       "id": "alignment_stick_hip_bump",
@@ -15,7 +16,8 @@
       "fault": "head_sway",
       "description": "Push an alignment stick into the ground just outside your trail hip. Make backswings and turn into the stick without letting your hips (and head) slide past it toward the trail side. This teaches you to rotate around a stable center instead of sliding laterally.",
       "difficulty": "intermediate",
-      "equipment": "Alignment stick"
+      "equipment": "Alignment stick",
+      "media": ""
     },
     {
       "id": "feet_together_swings",
@@ -23,7 +25,8 @@
       "fault": "head_sway",
       "description": "Stand with your feet touching and hit soft half-shots. Any lateral sway destroys your balance, so this drill forces you to stay centered and rotate rather than slide. Start at 50% speed and build up while keeping your head centered over the ball.",
       "difficulty": "advanced",
-      "equipment": "None"
+      "equipment": "None",
+      "media": ""
     },
     {
       "id": "trail_shoulder_down",
@@ -31,7 +34,8 @@
       "fault": "reverse_pivot",
       "description": "At address, feel your trail shoulder slightly lower than your lead shoulder. Make backswings that keep your spine tilted AWAY from the target, so your weight loads into your trail side and your lead shoulder works down and behind the ball rather than tilting toward the target.",
       "difficulty": "beginner",
-      "equipment": "None"
+      "equipment": "None",
+      "media": ""
     },
     {
       "id": "load_into_trail_heel",
@@ -39,7 +43,8 @@
       "fault": "reverse_pivot",
       "description": "Place a golf ball or small towel under the outside of your trail foot. As you swing to the top, feel pressure move into your trail heel and glute. This trains a proper weight shift into the trail side so your upper body stops leaning toward the target at the top.",
       "difficulty": "intermediate",
-      "equipment": "Golf ball or towel"
+      "equipment": "Golf ball or towel",
+      "media": ""
     },
     {
       "id": "cross_arm_tilt_mirror",
@@ -47,7 +52,8 @@
       "fault": "reverse_pivot",
       "description": "Cross your arms over your chest and set up facing a mirror (or a down-the-line camera). Turn to the top and check that your lead shoulder points down toward the ball and your head stays behind center. Rehearse until the correct trail-side tilt feels automatic, then blend it into full swings.",
       "difficulty": "advanced",
-      "equipment": "Mirror or camera"
+      "equipment": "Mirror or camera",
+      "media": ""
     },
     {
       "id": "chair_glute_touch",
@@ -55,7 +61,8 @@
       "fault": "early_extension",
       "description": "Set up with a chair or the arm of a couch just touching your backside. Make slow swings and keep your trail glute (then your lead glute) in contact with the chair through impact. If you thrust toward the ball you will lose contact. This trains you to keep your hips back and rotate.",
       "difficulty": "beginner",
-      "equipment": "Chair"
+      "equipment": "Chair",
+      "media": ""
     },
     {
       "id": "stick_across_hips",
@@ -63,7 +70,8 @@
       "fault": "early_extension",
       "description": "Slide an alignment stick through your belt loops so it points at the ball line. As you swing down, feel the stick stay level and rotate rather than rising up toward the ball. A great check for keeping your pelvis back and your spine angle intact into impact.",
       "difficulty": "intermediate",
-      "equipment": "Alignment stick"
+      "equipment": "Alignment stick",
+      "media": ""
     },
     {
       "id": "squat_and_rotate",
@@ -71,7 +79,8 @@
       "fault": "early_extension",
       "description": "Without a club, get into golf posture and make the downswing move by feeling your hips squat slightly and rotate open, keeping your chest over the ball. Do 15 slow reps to groove the sensation of clearing the hips instead of standing up and thrusting toward the ball.",
       "difficulty": "advanced",
-      "equipment": "None"
+      "equipment": "None",
+      "media": ""
     },
     {
       "id": "butt_on_wall_posture",
@@ -79,7 +88,8 @@
       "fault": "loss_of_posture",
       "description": "Stand with your backside lightly against a wall in your golf posture. Make backswings and downswings keeping your backside touching the wall, which preserves your forward spine tilt. Losing wall contact means you stood up out of your posture.",
       "difficulty": "beginner",
-      "equipment": "A wall"
+      "equipment": "A wall",
+      "media": ""
     },
     {
       "id": "maintain_spine_angle_mirror",
@@ -87,7 +97,8 @@
       "fault": "loss_of_posture",
       "description": "Set up down-the-line to a mirror or camera and mark your spine angle at address with a piece of tape on the glass. Make slow swings and confirm your head and chest stay on that angle into impact instead of rising up. Rehearse until you keep the tilt without thinking about it.",
       "difficulty": "intermediate",
-      "equipment": "Mirror or camera and tape"
+      "equipment": "Mirror or camera and tape",
+      "media": ""
     },
     {
       "id": "belt_line_stays_covered",
@@ -95,7 +106,8 @@
       "fault": "loss_of_posture",
       "description": "Imagine you are swinging inside a tunnel the height of your setup. Hit three-quarter shots while feeling your chest stay covering the ball and your forward bend held from the takeaway through impact. Any early straightening feels like bumping the top of the tunnel.",
       "difficulty": "advanced",
-      "equipment": "None"
+      "equipment": "None",
+      "media": ""
     }
   ]
 }
