@@ -325,12 +325,14 @@ SwingPhases? detectPhases(
 ///   - The events must be strictly ordered. [detectPhases] guarantees only
 ///     takeaway <= top <= impact by construction; equality means a phase has
 ///     zero duration, which is not a swing that happened.
-///
-/// REMOVED 2026-08-17: a tempo-inversion check (backswing must outlast the
-/// downswing) lived here and rejected 3 of the first 4 real swings measured on
-/// a phone. It rested on the detected phases meaning something; on real device
-/// clips they do not. See P1.3 in ROADMAP.md. Do not reinstate it without
-/// fixing phase location first.
+///   - A golf swing's backswing must outlast its downswing (tempo > 1:1). With
+///     stance-bounded localization (12/14 against labels), the detected phases
+///     are meaningful and this check is safe. Every real swing in the corpus has
+///     ratio >= 1.42; the one negative it catches has ratio 0.08. REINSTATED
+///     2026-08-23 — the original removal (2026-08-17) was because
+///     `detect_phases` anchored in the walk-in, making the ratio meaningless.
+///     Stance-bounded localization fixes the anchoring, which was the stated
+///     precondition for reinstatement.
 ///
 /// Deliberately NOT checked here: anything needing a calibrated number. If a
 /// proposed check requires a constant only P0.1 can supply, it belongs in P0.2.
@@ -347,6 +349,15 @@ String? implausibleSwing(SwingPhases? phases) {
   }
   if (impact <= top) {
     return 'the downswing has no duration (top and impact are the same frame)';
+  }
+
+  // A golf swing always has a longer backswing than downswing (tour average
+  // ~3:1). An inverted ratio means the detected events do not describe a swing.
+  final backswingFrames = top - takeaway;
+  final downswingFrames = impact - top;
+  if (backswingFrames < downswingFrames) {
+    return 'the detected backswing is shorter than the downswing — '
+        'that pattern does not match a golf swing';
   }
 
   return null;

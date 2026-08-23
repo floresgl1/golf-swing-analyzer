@@ -262,6 +262,12 @@ def implausible_swing(phases):
     clips they do not. See P1.3 in ROADMAP.md. Do not reinstate it without
     fixing phase location first.
 
+    REINSTATED 2026-08-23: stance-bounded localization (12/14 against device
+    labels) fixes the anchoring that caused the original rejection of real
+    swings. Every real swing in the corpus has ratio >= 1.42; the one negative
+    this check catches has ratio 0.08. The stated precondition — "fixing phase
+    location first" — is met.
+
     Deliberately NOT checked here: anything needing a calibrated number. If a
     proposed check requires a constant only P0.1 can supply, it belongs in P0.2.
     """
@@ -278,6 +284,15 @@ def implausible_swing(phases):
     if impact <= top:
         return ('the downswing has no duration (top and impact are the same '
                 'frame)')
+
+    # A golf swing always has a longer backswing than downswing (tour average
+    # ~3:1). An inverted ratio means the detected events do not describe a
+    # swing. See the note above for reinstatement rationale.
+    backswing_frames = top - takeaway
+    downswing_frames = impact - top
+    if backswing_frames < downswing_frames:
+        return ('the detected backswing is shorter than the downswing — '
+                'that pattern does not match a golf swing')
 
     return None
 

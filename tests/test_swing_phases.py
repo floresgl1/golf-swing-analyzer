@@ -123,24 +123,38 @@ def test_implausible_swing_rejects_no_phases():
 
 
 
-# Phase indices recomputed from the first five real recordings off a phone
-# (2026-08-17, 30 fps). Every one has a tempo ratio below 1:1 -- the detector
-# places `top` in the first half-second of a 15-18 second clip -- so the
-# tempo-inversion check that used to live in implausible_swing rejected three
-# of the four genuine swings. The gate must let all of these through: they are
-# badly *analysed*, which is P1.3's problem, not absent.
-DEVICE_PHASES_2026_08_17 = [
-    {'takeaway': 0, 'top': 4, 'impact': 63, 'finish': 138},    # clip of nothing
-    {'takeaway': 0, 'top': 1, 'impact': 443, 'finish': 456},   # real swing
-    {'takeaway': 0, 'top': 15, 'impact': 66, 'finish': 412},   # real swing
-    {'takeaway': 0, 'top': 130, 'impact': 265, 'finish': 474}, # real swing
-    {'takeaway': 0, 'top': 8, 'impact': 526, 'finish': 540},   # real swing
+# Stance-bounded phases from the first five real recordings off a phone
+# (2026-08-17, 30 fps), recomputed through locate_swing with hip_x (the path
+# the app and CLI both run). The four genuine swings all have ratio >= 2.78;
+# the clip of nothing has ratio 0.29 and is correctly rejected.
+#
+# These REPLACE the peak-localized fixture DEVICE_PHASES_2026_08_17 that was
+# here before the tempo check was reinstated (2026-08-23). That fixture used
+# peak localization (0/14 against labels), which put `top` in the first half-
+# second and inverted the tempo on all five clips. Peak localization is no
+# longer used by any code path (app or CLI use stance-bounded exclusively),
+# so the fixture no longer represents what `implausible_swing` receives.
+DEVICE_LOCATED_2026_08_17 = [
+    # clips 1-4: real swings (ratios 5.00, 2.80, 3.75, 2.78)
+    {'takeaway': 239, 'top': 299, 'impact': 311, 'finish': 320},
+    {'takeaway': 244, 'top': 272, 'impact': 282, 'finish': 301},
+    {'takeaway': 264, 'top': 294, 'impact': 302, 'finish': 312},
+    {'takeaway': 316, 'top': 341, 'impact': 350, 'finish': 360},
 ]
 
 
-@pytest.mark.parametrize('phases', DEVICE_PHASES_2026_08_17)
+@pytest.mark.parametrize('phases', DEVICE_LOCATED_2026_08_17)
 def test_implausible_swing_accepts_real_device_recordings(phases):
     assert implausible_swing(phases) is None
+
+
+def test_implausible_swing_rejects_nothing_clip():
+    """The nothing-clip (clip 0 of device 2026-08-17) has ratio 0.29 under
+    stance-bounded localization — correctly rejected by the tempo check."""
+    phases = {'takeaway': 106, 'top': 110, 'impact': 124, 'finish': 137}
+    reason = implausible_swing(phases)
+    assert reason is not None
+    assert 'backswing is shorter than the downswing' in reason
 
 
 # --- P1.4: characterization of locate_swing against real device data ---------

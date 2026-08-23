@@ -38,7 +38,7 @@ List<double?> _readAll(Object? raw) => [
         (v as num?)?.toDouble()
     ];
 
-/// The eight parallel per-frame arrays, in capture order.
+/// The per-frame parallel arrays, in capture order.
 class FrameSeries {
   final List<double?> eyeX;
   final List<double?> eyeY;
@@ -49,6 +49,11 @@ class FrameSeries {
   final List<double?> torso;
   final List<double?> wristY;
 
+  /// Per-frame ML Kit confidence (min landmark likelihood, 0.0–1.0). Null on
+  /// records written before 2026-08-23 and when the pose was not detected.
+  /// Optional so old records deserialize cleanly.
+  final List<double?>? poseConfidence;
+
   const FrameSeries({
     required this.eyeX,
     required this.eyeY,
@@ -58,6 +63,7 @@ class FrameSeries {
     required this.hipY,
     required this.torso,
     required this.wristY,
+    this.poseConfidence,
   });
 
   /// Number of frames, taken from the lead-wrist array (the one phase detection
@@ -73,6 +79,7 @@ class FrameSeries {
         hipY: _storeAll(features.map((f) => f.hipY)),
         torso: _storeAll(features.map((f) => f.torso)),
         wristY: _storeAll(features.map((f) => f.wristY)),
+        poseConfidence: _storeAll(features.map((f) => f.poseConfidence)),
       );
 
   factory FrameSeries.fromJson(Map<String, dynamic> json) => FrameSeries(
@@ -84,6 +91,9 @@ class FrameSeries {
         hipY: _readAll(json['hip_y']),
         torso: _readAll(json['torso']),
         wristY: _readAll(json['wrist_y']),
+        // Optional: absent on records written before 2026-08-23.
+        poseConfidence:
+            json.containsKey('pose_confidence') ? _readAll(json['pose_confidence']) : null,
       );
 
   Map<String, dynamic> toJson() => {
@@ -95,6 +105,7 @@ class FrameSeries {
         'hip_y': hipY,
         'torso': torso,
         'wrist_y': wristY,
+        if (poseConfidence != null) 'pose_confidence': poseConfidence,
       };
 
   /// Rebuild the detector inputs from stored arrays (null → NaN), so a stored
@@ -114,6 +125,7 @@ class FrameSeries {
           hipY: at(hipY, i),
           torso: at(torso, i),
           wristY: at(wristY, i),
+          poseConfidence: poseConfidence != null ? at(poseConfidence!, i) : 1.0,
         ),
     ];
   }
