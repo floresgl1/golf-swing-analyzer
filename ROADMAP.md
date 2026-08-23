@@ -1773,6 +1773,70 @@ shape `drills.json`. 96 tests pass.
 - **Sharing**: export swing reports as images or PDFs for sharing with an instructor
 - **Onboarding**: guide for recording angle, distance, lighting for best results
 
+### Continuous recording — let it roll (2026-08-23)
+
+**The idea.** Instead of one-swing-at-a-time recording, let the golfer hit
+record once and swing as many times as they want. The camera just keeps
+rolling; the app segments the clip into individual swings and analyzes each.
+
+**Why it's the right direction.** The current flow — record, stop, review,
+analyze, navigate back, record again — is built around the software's
+constraint (the localizer finds one swing per clip), not the golfer's
+workflow. A golfer on the range hits balls every 30–60 seconds. With a
+self-timer that means walking to the phone, starting the timer, walking back,
+hitting, walking back to stop recording, waiting for analysis, then doing it
+all again. That's two round-trips per swing. Continuous recording removes
+both: set the phone on a tripod, hit record, hit a bucket, stop when done.
+
+**Why one-at-a-time is right *for now*.**
+1. **The localizer (`detectPhases` with `stanceBounds`) finds exactly one
+   swing in a clip.** It scores stance-bounded candidates and returns the
+   best. 12/14 against the labeled corpus. Multi-swing segmentation — finding
+   *all* swings in a long clip, separating setup/reset dead time from swing
+   windows — is a different problem that hasn't been built or validated.
+2. **240 fps frame extraction at full resolution for a 10-minute clip would
+   blow memory.** The current pipeline extracts every frame; a rolling clip
+   needs either a chunked extraction strategy or a two-pass approach (coarse
+   segmentation at low fps, then full extraction per detected swing window).
+3. **Everything runs on-device.** There's no server to offload to. A
+   5-minute bucket session at 240 fps is ~72,000 frames. MediaPipe pose
+   estimation on every frame is not viable in a single pass on a phone.
+4. **The one-swing loop is not yet solid enough to parallelize.** Getting
+   the single-swing path right — fast preview, reliable analysis, clear
+   results — is prerequisite. Multiplying a mediocre experience by N swings
+   makes it N times worse, not better.
+
+**The intermediate step (done).** `SwingPreviewScreen` already breaks the
+coupling between recording and analysis: the golfer sees the clip immediately,
+taps "Analyze," and can navigate back to record again while analysis runs.
+This halves the dead time per swing without touching the localizer. It also
+gives the golfer a natural out for bad takes — they can re-record without
+waiting 10–15 seconds for analysis they'll throw away.
+
+**What "just let it roll" needs (P2/P3).**
+- **Multi-swing segmentation in the localizer.** Extend `detectPhases` (or a
+  wrapper) to return *all* swing windows in a long clip, not just the best
+  candidate. Needs labeled multi-swing clips in the corpus — none exist today.
+- **Chunked / streaming frame extraction.** Extract frames in windows around
+  detected swings, not the whole clip. The coarse pass can run at 30 fps to
+  find stance transitions, then pull 240 fps frames only in the swing windows.
+- **Background batch analysis.** Queue detected swings and analyze them
+  sequentially in the background while the golfer keeps hitting. Show results
+  as they arrive, not all-at-once.
+- **Session-level UX.** The report screen is built for one swing. A
+  continuous session produces N swings that need a timeline or gallery view
+  with per-swing drill down. Progress over the session ("your tempo got more
+  consistent after swing 5") becomes possible.
+- **Storage.** N clips × 240 fps adds up. Either retain only the extracted
+  key frames per swing, or let the golfer choose which swings to keep after
+  the session.
+
+**Priority.** P2 at earliest — after P0.2 (threshold recalibration) and P1
+(the one-swing loop is polished and reliable). The intermediate step
+(`SwingPreviewScreen`) covers most of the friction until then. Multi-swing
+segmentation should probably be validated in Python first, like everything
+else in the detection pipeline.
+
 ### ✅ Product voice — the app reads like it was generated, not written (2026-08-17)
 
 Raised after seeing the shipped screens on device. The app is *accurate* and
