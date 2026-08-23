@@ -1,14 +1,18 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' show FontFeature;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../analysis/participant.dart';
 import '../analysis/swing_history.dart';
+import '../analysis/swing_history_store.dart';
 import '../models/drill.dart';
-import 'analyzing_screen.dart';
+import 'swing_preview_screen.dart';
 import 'theme/app_theme.dart';
 
 /// First screen: full-bleed camera viewfinder with a circular shutter button,
@@ -41,6 +45,7 @@ class _RecordScreenState extends State<RecordScreen> {
   CameraController? _controller;
   Future<void>? _initFuture;
   bool _isRecording = false;
+  SwingSession? _lastSwing;
 
   /// The fault the golfer wants to work on this swing, or null for a full swing
   /// check. Every detector still runs; this only sets the report's focus.
@@ -79,6 +84,22 @@ class _RecordScreenState extends State<RecordScreen> {
     _handedness = widget.participant.handedness ?? Handedness.right;
     if (widget.cameras.isNotEmpty) {
       _setupCamera(widget.cameras.first);
+    }
+    _loadLastSwing();
+  }
+
+  Future<void> _loadLastSwing() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final store = SwingHistoryStore(
+        File(p.join(dir.path, 'swing_history.jsonl')),
+        legacyFile: File(p.join(dir.path, 'swing_history.json')),
+      );
+      final result = await store.load();
+      if (!mounted || result.sessions.isEmpty) return;
+      setState(() => _lastSwing = result.sessions.last);
+    } catch (_) {
+      // Non-critical — the card is a convenience, not a requirement.
     }
   }
 
@@ -176,7 +197,7 @@ class _RecordScreenState extends State<RecordScreen> {
     if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => AnalyzingScreen(
+        builder: (_) => SwingPreviewScreen(
           videoPath: file.path,
           drills: widget.drills,
           handedness: _handedness,
@@ -239,7 +260,9 @@ class _RecordScreenState extends State<RecordScreen> {
             isRecording: _isRecording,
             selfTimerRemaining: _selfTimerRemaining,
             elapsed: _elapsedLabel,
+            elapsedSeconds: _elapsed.inSeconds,
             targeting: _targeting,
+            lastSwing: _lastSwing,
             onTargetingChanged: _isRecording
                 ? null
                 : (value) => setState(() => _targeting = value),
@@ -262,7 +285,9 @@ class _ViewfinderLayout extends StatelessWidget {
     required this.isRecording,
     required this.selfTimerRemaining,
     required this.elapsed,
+    required this.elapsedSeconds,
     required this.targeting,
+    required this.lastSwing,
     required this.onTargetingChanged,
     required this.onShutterTap,
     required this.onSelfTimerTap,
@@ -272,7 +297,9 @@ class _ViewfinderLayout extends StatelessWidget {
   final bool isRecording;
   final int? selfTimerRemaining;
   final String elapsed;
+  final int elapsedSeconds;
   final String? targeting;
+  final SwingSession? lastSwing;
   final ValueChanged<String?>? onTargetingChanged;
   final VoidCallback onShutterTap;
   final VoidCallback onSelfTimerTap;
@@ -313,6 +340,59 @@ class _ViewfinderLayout extends StatelessWidget {
         // Self-timer countdown overlay.
         if (selfTimerRemaining != null)
           _SelfTimerOverlay(remaining: selfTimerRemaining!),
+
+        // Last swing summary — gives context before recording.
+        if (!isRecording && selfTimerRemaining == null && lastSwing != null)
+          Positioned(
+            top: 0,
+            left: 16,
+            right: 16,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 44),
+                child: _LastSwingCard(session: lastSwing!),
+              ),
+            ),
+          ),
+
+        // Recording-length nudge — appears after 8 seconds to encourage
+        // shorter clips. Shorter clips analyze faster and contain less
+        // walk-in/walk-out noise for the stance-bounded localizer.
+        if (isRecording && elapsedSeconds >= 8)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 32),
+                child: Center(
+                  child: AnimatedOpacity(
+                    opacity: 1.0,
+                    duration: const Duration(milliseconds: 400),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: sc.scrim,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        'Got your swing? Tap stop.',
+                        style: TextStyle(
+                          color: sc.onScrim.withValues(alpha: 0.8),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
 
         // Top bar — profile button + instruction hint.
         Positioned(
@@ -689,6 +769,87 @@ class _NoCameraMessage extends StatelessWidget {
           'No camera found. Fore Swing needs a camera to record your swing.',
           textAlign: TextAlign.center,
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Last swing summary card
+// ---------------------------------------------------------------------------
+
+class _LastSwingCard extends StatelessWidget {
+  const _LastSwingCard({required this.session});
+
+  final SwingSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final sc = SwingColors.of(context);
+    final flagged = session.faults.values.where((f) => f.flagged).toList();
+    final targeting = session.targeting;
+
+    String summary;
+    if (flagged.isEmpty) {
+      summary = 'Last swing looked clean';
+    } else if (targeting != null) {
+      final targetLabel = faultLabels[targeting] ?? targeting;
+      final targetResult = session.faults[targeting];
+      if (targetResult != null && targetResult.flagged) {
+        summary = 'Still working on $targetLabel';
+      } else {
+        summary = '$targetLabel looked good last time';
+      }
+    } else {
+      final labels = flagged
+          .map((f) {
+            final entry = session.faults.entries.firstWhere(
+              (e) => e.value == f,
+              orElse: () => session.faults.entries.first,
+            );
+            return faultLabels[entry.key] ?? entry.key;
+          })
+          .toList();
+      if (labels.length == 1) {
+        summary = '${labels.first} flagged last swing';
+      } else {
+        summary = '${labels.length} faults flagged last swing';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: sc.scrim,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            flagged.isEmpty ? Icons.check_circle_outline : Icons.sports_golf,
+            size: 16,
+            color: flagged.isEmpty ? sc.notSeen : sc.focus,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              summary,
+              style: TextStyle(
+                color: sc.onScrim.withValues(alpha: 0.8),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          if (session.tempoRatio != null)
+            Text(
+              '${session.tempoRatio!.toStringAsFixed(1)}:1',
+              style: TextStyle(
+                color: sc.onScrim.withValues(alpha: 0.5),
+                fontSize: 11,
+              ),
+            ),
+        ],
       ),
     );
   }
