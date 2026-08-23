@@ -14,10 +14,11 @@ import 'widgets/swing_player.dart';
 
 /// The swing report, structured around visual hierarchy:
 ///   1. Hero — swing stills + tempo on one strong surface.
-///   2. Measurements — four faults as a dense list, not individual cards.
-///   3. Drills collapsed under each flagged fault, expanded only for the
+///   2. Headline — one sentence summarising the swing.
+///   3. Measurements — four faults as a dense list, not individual cards.
+///   4. Drills collapsed under each flagged fault, expanded only for the
 ///      focus fault.
-///   4. Swing-over-swing comparison last.
+///   5. Swing-over-swing comparison last.
 ///
 /// Fault language is deliberately tentative and the comparison carries no
 /// verdict: the thresholds are unvalidated, so the report measures and shows,
@@ -77,15 +78,15 @@ class ReportScreen extends StatelessWidget {
               fps: analysis.fps,
               frameCount: analysis.frameCount,
             ),
-          const _BetaCaveat(),
           if (writeStatus == HistoryWriteStatus.failed) const _NotSavedNotice(),
 
-          // 2. Dense measurement list.
-          const _SectionHeader('Measurements'),
-          _MeasurementList(analysis: analysis),
-          if (!analysis.anyFlagged) const _CleanSwingBanner(),
+          // 2. Headline — one sentence the golfer came for.
+          _HeadlineSummary(analysis: analysis),
 
-          // 3. Comparison last.
+          // 3. Dense measurement list.
+          _MeasurementList(analysis: analysis),
+
+          // 4. Comparison last.
           if (comparison != null)
             SwingComparisonView(comparison: comparison),
           Gap.lg,
@@ -129,7 +130,7 @@ class _HeroSection extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleMedium),
                 Gap.sm,
                 if (tempo == null)
-                  const Text('Tempo unavailable.')
+                  const Text('Could not measure tempo for this swing.')
                 else ...[
                   Row(
                     children: [
@@ -154,9 +155,6 @@ class _HeroSection extends StatelessWidget {
                     ],
                   ),
                   Gap.sm,
-                  // The "tour average ~3 : 1" benchmark used to sit next to this
-                  // number, inviting a comparison the capture rate cannot support.
-                  // See the original _tempoCaveat comment for the full reasoning.
                   Text(
                     _tempoCaveat(tempo, analysis.fps),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -164,11 +162,6 @@ class _HeroSection extends StatelessWidget {
                         ),
                   ),
                 ],
-                Gap.xs,
-                Text(
-                  '${analysis.fps.toStringAsFixed(0)} fps',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
               ],
             ),
           ),
@@ -208,13 +201,25 @@ class _TempoStat extends StatelessWidget {
 
 /// Splits the four fault verdicts into a focus card (if the golfer targeted a
 /// fault this swing) and a dense card grouping the rest.
-class _MeasurementList extends StatelessWidget {
+///
+/// When nothing is flagged, the measurements start collapsed — the headline
+/// already said "looking good", so the detail is there for the curious, not
+/// pushed in the golfer's face.
+class _MeasurementList extends StatefulWidget {
   const _MeasurementList({required this.analysis});
 
   final SwingAnalysis analysis;
 
   @override
+  State<_MeasurementList> createState() => _MeasurementListState();
+}
+
+class _MeasurementListState extends State<_MeasurementList> {
+  late bool _collapsed = !widget.analysis.anyFlagged;
+
+  @override
   Widget build(BuildContext context) {
+    final analysis = widget.analysis;
     final targeting = analysis.targeting;
     final faults = analysis.faults; // stable order
 
@@ -226,6 +231,35 @@ class _MeasurementList extends StatelessWidget {
       } else {
         restVerdicts.add(f);
       }
+    }
+
+    // When collapsed, show a subtle "show measurements" tap target instead of
+    // the full list.
+    if (_collapsed) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: InkWell(
+          onTap: () => setState(() => _collapsed = false),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.expand_more,
+                    size: 18, color: Theme.of(context).colorScheme.outline),
+                const SizedBox(width: 4),
+                Text(
+                  'Show measurements',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     return Column(
@@ -445,28 +479,97 @@ class _MeasurementContent extends StatelessWidget {
 // Supporting widgets
 // ---------------------------------------------------------------------------
 
-/// Beta honesty note: the reference values behind every flag on this screen are
-/// still unvalidated, so the report is indicative only.
-class _BetaCaveat extends StatelessWidget {
-  const _BetaCaveat();
+/// One-sentence summary of the swing — the headline the golfer came for.
+///
+/// When something is flagged, names the flagged faults. When nothing is flagged,
+/// gives a brief encouraging note. The beta caveat is folded in as a small
+/// tappable footnote rather than a separate block that pushes content down.
+class _HeadlineSummary extends StatelessWidget {
+  const _HeadlineSummary({required this.analysis});
+
+  final SwingAnalysis analysis;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final sc = SwingColors.of(context);
+    final flagged = analysis.faults.where((f) => f.flagged).toList();
+
+    final String headline;
+    final Color headlineColor;
+    final IconData headlineIcon;
+
+    if (flagged.isEmpty) {
+      headline = 'Looking good — nothing stood out.';
+      headlineColor = sc.notSeen;
+      headlineIcon = Icons.check_circle_outline;
+    } else if (flagged.length == 1) {
+      headline = '${flagged.first.label} stood out this swing.';
+      headlineColor = sc.flagged;
+      headlineIcon = Icons.info_outline;
+    } else {
+      final names = flagged.map((f) => f.label.toLowerCase()).toList();
+      final last = names.removeLast();
+      headline = '${names.join(', ')} and $last stood out.';
+      headlineColor = sc.flagged;
+      headlineIcon = Icons.info_outline;
+    }
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline,
-              size: 16, color: theme.colorScheme.outline),
-          Gap.hsm,
-          Expanded(
-            child: Text(
-              'Early numbers — we haven\'t validated these against a wide '
-              'range of swings yet, so treat them as rough readings.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.outline),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(headlineIcon, size: 20, color: headlineColor),
+              ),
+              Gap.hsm,
+              Expanded(
+                child: Text(
+                  headline,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: headlineColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Gap.sm,
+          // Beta note — compact, tappable for detail, not a content-pushing block.
+          const _BetaFootnote(),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compact beta note: a single line with a tooltip for the full explanation.
+/// Replaces the old multi-line _BetaCaveat that pushed content down.
+class _BetaFootnote extends StatelessWidget {
+  const _BetaFootnote();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Tooltip(
+      message: 'These numbers haven\'t been validated against a wide range '
+          'of swings yet — treat them as rough readings.',
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.science_outlined,
+              size: 13, color: theme.colorScheme.outline),
+          const SizedBox(width: 4),
+          Text(
+            'Early readings',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.outline,
             ),
           ),
         ],
@@ -507,47 +610,6 @@ class _NotSavedNotice extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.title);
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: Text(title, style: Theme.of(context).textTheme.titleLarge),
-    );
-  }
-}
-
-/// Shown when no measurement passed its reference value.
-///
-/// Deliberately not an all-clear, and deliberately not green. The softening
-/// pass hedged the positive direction ("Possible…") and left this one
-/// confident, but nothing measured here supports "your swing is fine": the
-/// false-negative rate is as unvalidated as the false-positive rate, and only
-/// four faults are measured at all.
-class _CleanSwingBanner extends StatelessWidget {
-  const _CleanSwingBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: theme.colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          'Nothing flagged. We only check four things so far — '
-          'this just means nothing stood out.',
-          style: theme.textTheme.bodyMedium,
-        ),
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Tempo caveat — how much to trust the ratio
 // ---------------------------------------------------------------------------
@@ -560,15 +622,13 @@ class _CleanSwingBanner extends StatelessWidget {
 /// hedge about a condition that was not true. Frame rate only matters here
 /// through the counts it produces, so the counts are what this reads.
 String _tempoCaveat(SwingTempo? tempo, double fps) {
-  final rate = 'Captured at ${fps.toStringAsFixed(0)} fps.';
+  final rate = '${fps.toStringAsFixed(0)} fps';
   final precision = tempoRatioPrecision(tempo);
   if (tempo == null || precision == null) return rate;
 
   // Events are located to the nearest frame, so the ratio is only pinned down
-  // to within `precision`. Saying that number is more use than grading it —
-  // and it is printed at whatever precision it actually has, never rounded up
-  // to a friendlier-looking figure. Overstating the uncertainty is a smaller
-  // lie than understating it, but it is still a lie.
-  final window = precision.toStringAsFixed(precision < 0.1 ? 2 : 1);
-  return '$rate Ratio is accurate to about ±$window.';
+  // to within `precision`. A golfer doesn't need the arithmetic — just whether
+  // the reading is solid.
+  if (precision < 0.15) return rate;
+  return '$rate · ratio is approximate at this frame count';
 }

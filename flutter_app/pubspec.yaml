@@ -41,6 +41,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.0
 
 flutter_launcher_icons:
   android: true
@@ -54,7 +55,24 @@ flutter_launcher_icons:
   adaptive_icon_background: "#0B1D13"
   adaptive_icon_foreground: "assets/icon_foreground.png"
 
+flutter_native_splash:
+  # Dark green background matching the app icon and camera-first palette.
+  color: "#0B1D13"
+  # The icon centered on the splash screen — same asset as the app icon.
+  image: assets/icon.png
+  android: true
+  ios: true
+  # Android 12+ splash screen (uses the adaptive icon by default; the image
+  # override keeps the full icon consistent with iOS).
+  android_12:
+    color: "#0B1D13"
+    image: assets/icon.png
+
 flutter:
   uses-material-design: true
   assets:
     - assets/drills.json
+    # Demo clips for corrective drills. The directory is declared now so
+    # clips drop in without a pubspec edit — just add the .mp4 and fill
+    # in the "media" field in drills.json.
+    - assets/drills/

@@ -61,6 +61,10 @@ class Participant {
   /// Per fault id: has a coach identified this fault in this golfer?
   final Map<String, CoachConfirmation> coachReports;
 
+  /// Whether the first-run framing guide has been shown. Set to true after
+  /// the golfer dismisses it so it only appears once.
+  final bool onboardingShown;
+
   /// When true, the next swing is recorded as a calibration swing — a
   /// labelled positive control with one fault deliberately exaggerated.
   /// Lives on the participant rather than the record screen because the
@@ -79,6 +83,7 @@ class Participant {
     required this.createdAt,
     this.handedness,
     this.coachReports = const {},
+    this.onboardingShown = false,
     this.calibrationMode = false,
     this.calibrationFault,
     Map<String, dynamic> source = const <String, dynamic>{},
@@ -87,6 +92,7 @@ class Participant {
   Participant copyWith({
     Handedness? handedness,
     Map<String, CoachConfirmation>? coachReports,
+    bool? onboardingShown,
     bool? calibrationMode,
     String? calibrationFault,
   }) =>
@@ -95,6 +101,7 @@ class Participant {
         createdAt: createdAt,
         handedness: handedness ?? this.handedness,
         coachReports: coachReports ?? this.coachReports,
+        onboardingShown: onboardingShown ?? this.onboardingShown,
         calibrationMode: calibrationMode ?? this.calibrationMode,
         calibrationFault: calibrationFault ?? this.calibrationFault,
         source: _source,
@@ -114,6 +121,7 @@ class Participant {
       createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
       handedness: Handedness.tryParse(json['handedness']),
       coachReports: reports,
+      onboardingShown: json['onboarding_shown'] == true,
       calibrationMode: json['calibration_mode'] == true,
       calibrationFault: json['calibration_fault'] as String?,
       source: json,
@@ -128,6 +136,7 @@ class Participant {
         'coach_reports': {
           for (final entry in coachReports.entries) entry.key: entry.value.id,
         },
+        'onboarding_shown': onboardingShown,
         'calibration_mode': calibrationMode,
         if (calibrationFault != null) 'calibration_fault': calibrationFault,
       };
@@ -237,6 +246,14 @@ class ParticipantStore {
   Future<Participant> setHandedness(Handedness handedness) async {
     final current = await loadOrCreate();
     final updated = current.copyWith(handedness: handedness);
+    await save(updated);
+    return updated;
+  }
+
+  /// Mark the first-run onboarding as shown.
+  Future<Participant> setOnboardingShown() async {
+    final current = await loadOrCreate();
+    final updated = current.copyWith(onboardingShown: true);
     await save(updated);
     return updated;
   }

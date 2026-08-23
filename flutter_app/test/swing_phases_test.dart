@@ -89,28 +89,39 @@ void main() {
 
   });
 
-  // Phase indices recomputed from the first five real recordings off a phone
-  // (2026-08-17, 30 fps). Every one has a tempo ratio below 1:1 -- the detector
-  // places `top` in the first half-second of a 15-18 second clip -- so the
-  // tempo-inversion check that used to live in implausibleSwing rejected three
-  // of the four genuine swings. The gate must let all of these through: they
-  // are badly *analysed*, which is P1.3's problem, not absent.
-  group('implausibleSwing accepts real device recordings', () {
-    const deviceRecordings = <String, SwingPhases>{
-      'clip of nothing':
-          SwingPhases(takeaway: 0, top: 4, impact: 63, finish: 138),
+  // Stance-bounded phases from the first five real recordings off a phone
+  // (2026-08-17, 30 fps), recomputed through locate_swing with hip_x (the path
+  // the app runs). The four genuine swings all have ratio >= 2.78; the clip of
+  // nothing has ratio 0.29 and is correctly rejected.
+  //
+  // These REPLACE the peak-localized fixture that was here before the tempo
+  // check was reinstated (2026-08-23). Peak localization (0/14 against labels)
+  // is no longer used by any code path.
+  group('implausibleSwing with stance-bounded device recordings', () {
+    const deviceSwings = <String, SwingPhases>{
+      // Ratios: 5.00, 2.80, 3.75, 2.78
       'real swing 1':
-          SwingPhases(takeaway: 0, top: 1, impact: 443, finish: 456),
+          SwingPhases(takeaway: 239, top: 299, impact: 311, finish: 320),
       'real swing 2':
-          SwingPhases(takeaway: 0, top: 15, impact: 66, finish: 412),
+          SwingPhases(takeaway: 244, top: 272, impact: 282, finish: 301),
       'real swing 3':
-          SwingPhases(takeaway: 0, top: 130, impact: 265, finish: 474),
+          SwingPhases(takeaway: 264, top: 294, impact: 302, finish: 312),
       'real swing 4':
-          SwingPhases(takeaway: 0, top: 8, impact: 526, finish: 540),
+          SwingPhases(takeaway: 316, top: 341, impact: 350, finish: 360),
     };
 
-    deviceRecordings.forEach((label, phases) {
-      test(label, () => expect(implausibleSwing(phases), isNull));
+    deviceSwings.forEach((label, phases) {
+      test('accepts $label', () => expect(implausibleSwing(phases), isNull));
+    });
+
+    test('rejects the nothing-clip', () {
+      // Clip 0 of device 2026-08-17: ratio 0.29 under stance-bounded
+      // localization — correctly rejected by the tempo check.
+      const phases =
+          SwingPhases(takeaway: 106, top: 110, impact: 124, finish: 137);
+      final reason = implausibleSwing(phases);
+      expect(reason, isNotNull);
+      expect(reason!, contains('backswing is shorter than the downswing'));
     });
   });
 

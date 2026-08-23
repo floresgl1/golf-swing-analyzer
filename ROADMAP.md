@@ -423,7 +423,31 @@ One ULP. It cannot change a verdict on any real swing — a golfer's spine angle
 - Test on both iOS and Android if possible
 - Address any ML Kit keypoint accuracy issues (may need threshold adjustments for mobile)
 
-#### P1.1 — The app cannot say "that wasn't a swing" (found on device 2026-08-17) — STILL OPEN
+#### P1.1 — The app cannot say "that wasn't a swing" (found on device 2026-08-17) — TWO NON-CALIBRATION GATES SHIPPED 2026-08-23
+
+**Status 2026-08-23: two gates shipped, both impossible without calibration.**
+
+1. **ML Kit likelihood gate.** `PoseEstimator.featuresForFrame` now reads the
+   `likelihood` (0.0–1.0) of every required landmark, takes the minimum, and
+   stores it as `FrameFeatures.poseConfidence`. The `detected` getter gates on
+   `confidenceFloor = 0.5` (ML Kit's own binary-classifier cutoff, not a
+   golf-domain constant). Frames where ML Kit is guessing no longer inflate
+   pose coverage. The nothing-clip of 2026-08-17 had coverage 0.61 because ML
+   Kit hallucinated a person in 61% of empty frames; with the gate those frames
+   count as undetected. `FrameSeries` stores per-frame confidence
+   (`pose_confidence` key, nullable for backward compat with records written
+   before 2026-08-23).
+
+2. **Tempo inversion check.** `implausible_swing` (Python) and
+   `implausibleSwing` (Dart) now reject phases where the backswing is shorter
+   than the downswing. Originally added 2026-08-17, removed the same day
+   because peak-localized phases (0/14 against labels) made the ratio
+   meaningless; reinstated 2026-08-23 because stance-bounded localization
+   (12/14) fixes the anchoring. Empirically safe: all 13 real swings in the
+   corpus have ratio ≥ 1.42; the one negative this catches has ratio 0.08.
+
+Neither gate carries calibration debt. Both are test-covered in Python
+(`tests/test_swing_phases.py`) and Dart (`test/swing_phases_test.dart`).
 
 **Status 2026-08-20: still open, now measured, and partly improved.** Six clips
 filmed to test the gate showed it is wrong in **both** directions — it rejected
@@ -444,14 +468,13 @@ This is **not a threshold problem**. It is a missing precondition, and no
 amount of P0.1 recalibration touches it: a detector tuned perfectly still has
 nothing to say about input that contains no swing.
 
-**The chain, as it stands:**
+**The chain, as it stood (item 1 FIXED 2026-08-23, see status above):**
 
-1. **Pose confidence is never read.** `pose_estimator.dart` rejects a frame only
-   when `poses.isEmpty` or a required landmark is `null`. ML Kit emits all 33
-   landmarks *with a `likelihood` score* even when it is guessing, so landmarks
-   are essentially never null once any pose is returned. Grepping `lib/` for
-   `likelihood|confidence` returns **zero hits** — the one signal separating "a
-   person is here" from "a person has been invented" is discarded at the source.
+1. ~~**Pose confidence is never read.**~~ **FIXED 2026-08-23.** `pose_estimator.dart`
+   now reads `likelihood` from every required landmark and stores the minimum as
+   `FrameFeatures.poseConfidence`. The `detected` getter gates on
+   `confidenceFloor = 0.5`, so low-confidence hallucinations no longer inflate
+   pose coverage or pass the "fewer than 2 good frames" check.
 2. **Phase detection's only precondition is two frames.** `swing_phases.dart`:
    `if (goodCount < 2) return null`. After that `fillNaNLinear` interpolates
    gaps into a smooth curve, and `top` / `impact` / `finish` / `takeaway` are
@@ -631,12 +654,16 @@ finding the swing; it locks onto incidental hand movement during setup, because
 overwhelmingly not-swing. Every fault value in those reports — the 0.44 head
 sway included — was measured between meaningless anchors.
 
-**Consequence 1: the tempo-inversion gate is removed.** It rejected 3 of the 4
+**Consequence 1: the tempo-inversion gate was removed.** It rejected 3 of the 4
 genuine swings. It assumed the detected phases meant something; on real clips
 they do not, so a ratio below 1:1 says the *detector* failed, not that the
 input lacked a swing. The zero-duration checks stay — those are still
-impossibilities. The five recordings above are pinned as regression tests in
-both suites; reinstating the tempo check turns all four real-swing tests red.
+impossibilities. The five recordings above were pinned as regression tests in
+both suites; reinstating the tempo check turned all four real-swing tests red.
+**REINSTATED 2026-08-23.** Stance-bounded localization (12/14 against labels)
+fixes the anchoring that caused the original false rejections. Test fixtures
+replaced with stance-bounded phases; all 13 real swings pass (ratio ≥ 1.42),
+the nothing-clip is correctly rejected (ratio 0.08). See P1.1 status above.
 
 **Consequence 2: there is currently NO valid presence signal, so P1.1 is open
 again.** A clip of nothing still produces a full report. Note `pose_coverage`
@@ -2027,8 +2054,13 @@ A golfer reads all of that in about two seconds, before a single word.
     pass). Pick Fore Swing everywhere, and add a wordmark and launch screen in
     the dark camera-first palette. There is currently no icon, no launch
     screen, and no visual identity of any kind.
-    *Partially done prior sessions.* `main.dart` title set to `'Fore Swing'`.
-    App icon and launch screen still outstanding.
+    *Done.* `main.dart` title set to `'Fore Swing'`. Icon PNGs rendered from
+    `icon.svg` via cairosvg (1024×1024): `icon.png` (opaque, RGB) and
+    `icon_foreground.png` (transparent, RGBA, arc+dots only for adaptive
+    icons). `flutter_launcher_icons` configured in pubspec.yaml.
+    `flutter_native_splash` configured with the same dark green (#0B1D13)
+    background and centered icon. Run `dart run flutter_native_splash:create`
+    to generate platform splash assets.
 
 #### ✅ Tier 3 — details that read as unfinished
 

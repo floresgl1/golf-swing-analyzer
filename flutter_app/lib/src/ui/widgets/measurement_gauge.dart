@@ -120,7 +120,7 @@ class MeasurementGauge extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                'ref ${_fmtVal(absR, isAngle)}$unit',
+                'threshold ${_fmtVal(absR, isAngle)}$unit',
                 style: TextStyle(
                   color: outlineColor,
                   fontSize: 11,

@@ -38,6 +38,20 @@ class PoseEstimator {
   /// Run pose detection on the image at [framePath] and reduce it to the
   /// midpoints/torso/wrist the detectors need. Returns [FrameFeatures.missing]
   /// when no full-body pose is found.
+  ///
+  /// ML Kit's per-landmark `likelihood` (0.0–1.0) is now read and stored as
+  /// [FrameFeatures.poseConfidence] — the minimum across the seven required
+  /// landmarks. This is the signal P1.1 identified as "the one thing separating
+  /// 'a person is here' from 'a person has been invented'": ML Kit emits all 33
+  /// landmarks even when guessing, so without it the null-check gate below is
+  /// essentially always passed once any pose is returned.
+  ///
+  /// Frames where any required landmark is null still return `missing()`.
+  /// Low-confidence frames (all landmarks present but the model is guessing)
+  /// return a real [FrameFeatures] with the measured [poseConfidence]; the
+  /// downstream [FrameFeatures.detected] getter gates on it via
+  /// [FrameFeatures.confidenceFloor], so pose coverage, gap filling, and the
+  /// "fewer than 2 good frames" check all benefit without a separate gate here.
   Future<FrameFeatures> featuresForFrame(String framePath) async {
     final input = InputImage.fromFilePath(framePath);
     final poses = await _detector.processImage(input);
@@ -62,6 +76,19 @@ class PoseEstimator {
       return const FrameFeatures.missing();
     }
 
+    // Minimum likelihood across the seven landmarks the detectors need.
+    // A low value means ML Kit placed the landmark but is not confident it
+    // is correct — the coordinates may be hallucinated.
+    final confidence = [
+      leftEye.likelihood,
+      rightEye.likelihood,
+      leftShoulder.likelihood,
+      rightShoulder.likelihood,
+      leftHip.likelihood,
+      rightHip.likelihood,
+      wrist.likelihood,
+    ].reduce(math.min);
+
     final eyeX = (leftEye.x + rightEye.x) / 2;
     final eyeY = (leftEye.y + rightEye.y) / 2;
     final shoulderX = (leftShoulder.x + rightShoulder.x) / 2;
@@ -81,6 +108,7 @@ class PoseEstimator {
       hipY: hipY,
       torso: torso,
       wristY: wrist.y,
+      poseConfidence: confidence,
     );
   }
 

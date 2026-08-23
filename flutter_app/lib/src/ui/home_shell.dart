@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../analysis/participant.dart';
 import '../models/drill.dart';
+import 'onboarding_overlay.dart';
 import 'profile_screen.dart';
 import 'record_screen.dart';
 import 'swings_screen.dart';
@@ -53,6 +54,40 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Show the onboarding overlay once, on first launch.
+    if (!_participant.onboardingShown) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showOnboarding());
+    }
+  }
+
+  void _showOnboarding() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => OnboardingOverlay(
+          onDismissed: () {
+            Navigator.of(context).pop();
+            _markOnboardingSeen();
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _markOnboardingSeen() async {
+    final store = widget.participantStore;
+    if (store == null) return;
+    try {
+      final updated = await store.setOnboardingShown();
+      if (mounted) _onParticipantChanged(updated);
+    } catch (_) {
+      // Non-critical: worst case the overlay shows again next launch.
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
@@ -88,9 +123,9 @@ class _HomeShellState extends State<HomeShell> {
             label: 'Swings',
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profile',
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
           ),
         ],
       ),
