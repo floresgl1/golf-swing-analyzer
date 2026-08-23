@@ -337,9 +337,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text(
-                    'If a coach has pointed out any of these faults, let us '
-                    'know — it helps us check whether the app is seeing '
-                    'the same thing. This won\'t change your reports.',
+                    'If a coach has told you about any of these faults, '
+                    'mark them here — it helps me check whether the app '
+                    'is picking up the same thing. Won\'t change your reports.',
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
@@ -359,7 +359,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Gap.xs,
                 Text(
                   'Record a swing with one fault exaggerated on purpose '
-                  'so we can check the detectors are seeing it.',
+                  'so I can check the detectors are picking it up.',
                   style: theme.textTheme.bodySmall,
                 ),
                 SwitchListTile(
@@ -499,7 +499,7 @@ class _DiagnosticsSection extends StatelessWidget {
             ],
           ),
           Text(
-            'Random ID for this device — groups your swings together. '
+            'Random ID for this device — just ties your swings together. '
             'Not linked to you or any account.',
             style: muted,
           ),

@@ -376,12 +376,12 @@ class _ProgressView extends StatelessWidget {
         ),
         Gap.sm,
         _StepRow(
-          label: 'Finding your body',
+          label: 'Looking for your pose',
           status: _statusFor(AnalysisStage.detectingPose),
         ),
         Gap.sm,
         _StepRow(
-          label: 'Building report',
+          label: 'Crunching the numbers',
           status: _statusFor(AnalysisStage.computingReport),
         ),
       ],

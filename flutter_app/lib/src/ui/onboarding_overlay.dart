@@ -62,9 +62,9 @@ class _OnboardingOverlayState extends State<OnboardingOverlay> {
                     icon: Icons.sports_golf,
                     iconColor: sc.focus,
                     title: 'Fore Swing',
-                    body: 'Record your swing and get instant feedback on '
-                        'four common faults — no account, no upload, '
-                        'everything stays on your phone.',
+                    body: 'Film your swing, see what\'s going on. '
+                        'Four faults, right on your phone — nothing leaves '
+                        'the device.',
                   ),
                   _OnboardingPage(
                     icon: Icons.videocam_outlined,
@@ -72,9 +72,9 @@ class _OnboardingOverlayState extends State<OnboardingOverlay> {
                     title: 'How to film',
                     body: 'Set your phone at hip height, about 3 metres away, '
                         'facing your lead side.\n\n'
-                        'Keep your full body in frame from address through '
-                        'finish — the analyzer needs to see your hips, '
-                        'shoulders, and feet throughout the swing.',
+                        'Keep your whole body in frame from address through '
+                        'finish — hips, shoulders, and feet all need to be '
+                        'visible the whole time.',
                   ),
                 ],
               ),

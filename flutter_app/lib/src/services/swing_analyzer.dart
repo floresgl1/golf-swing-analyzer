@@ -211,7 +211,7 @@ class SwingAnalyzer {
       // Carry the measurements out with the rejection. The golfer sees the
       // message; the corpus gets a negative it can be scored against.
       throw SwingAnalysisException(
-        "We couldn't find a swing in that clip — $reason. "
+        "Couldn't find a swing in that clip — $reason. "
         'Try filming from the side, with your whole body in frame '
         'and the camera still.',
         reason: reason,
