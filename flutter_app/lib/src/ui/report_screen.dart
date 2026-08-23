@@ -595,8 +595,8 @@ class _BetaFootnote extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Tooltip(
-      message: 'These numbers haven\'t been validated against a wide range '
-          'of swings yet — treat them as rough readings.',
+      message: 'Still early — these readings will get sharper as '
+          'the app improves.',
       triggerMode: TooltipTriggerMode.tap,
       showDuration: const Duration(seconds: 4),
       child: Row(
@@ -669,5 +669,5 @@ String _tempoCaveat(SwingTempo? tempo, double fps) {
   // to within `precision`. A golfer doesn't need the arithmetic — just whether
   // the reading is solid.
   if (precision < 0.15) return rate;
-  return '$rate · ratio is approximate at this frame count';
+  return '$rate · ratio is rough at this frame rate';
 }

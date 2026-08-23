@@ -152,7 +152,7 @@ class _EmptyState extends StatelessWidget {
           ),
           Gap.sm,
           Text(
-            'Record a swing to get started.',
+            'Film one and it\'ll show up here.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.outline,
             ),
