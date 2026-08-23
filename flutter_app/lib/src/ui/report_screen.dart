@@ -7,7 +7,9 @@ import '../analysis/swing_history_store.dart';
 import '../models/drill.dart';
 import '../models/swing_analysis.dart';
 import 'theme/app_theme.dart';
+import '../models/key_frame.dart';
 import 'widgets/drill_tile.dart';
+import 'widgets/fault_stills.dart';
 import 'widgets/measurement_gauge.dart';
 import 'widgets/phase_montage.dart';
 import 'widgets/swing_comparison_view.dart';
@@ -86,7 +88,10 @@ class ReportScreen extends StatelessWidget {
           _HeadlineSummary(analysis: analysis),
 
           // 3. Dense measurement list.
-          _MeasurementList(analysis: analysis),
+          _MeasurementList(
+            analysis: analysis,
+            keyFrames: analysis.keyFrames,
+          ),
 
           // 4. Comparison last.
           if (comparison != null)
@@ -245,9 +250,10 @@ class _TempoStat extends StatelessWidget {
 /// already said "looking good", so the detail is there for the curious, not
 /// pushed in the golfer's face.
 class _MeasurementList extends StatefulWidget {
-  const _MeasurementList({required this.analysis});
+  const _MeasurementList({required this.analysis, this.keyFrames});
 
   final SwingAnalysis analysis;
+  final List<KeyFrame>? keyFrames;
 
   @override
   State<_MeasurementList> createState() => _MeasurementListState();
@@ -256,11 +262,21 @@ class _MeasurementList extends StatefulWidget {
 class _MeasurementListState extends State<_MeasurementList> {
   late bool _collapsed = !widget.analysis.anyFlagged;
 
+  /// Find the address and impact key frames, if available.
+  KeyFrame? _addressFrame() => widget.keyFrames?.cast<KeyFrame?>().firstWhere(
+      (f) => f!.label == 'Address',
+      orElse: () => null);
+  KeyFrame? _impactFrame() => widget.keyFrames?.cast<KeyFrame?>().firstWhere(
+      (f) => f!.label == 'Impact',
+      orElse: () => null);
+
   @override
   Widget build(BuildContext context) {
     final analysis = widget.analysis;
     final targeting = analysis.targeting;
     final faults = analysis.faults; // stable order
+    final addressFrame = _addressFrame();
+    final impactFrame = _impactFrame();
 
     FaultVerdict? focusVerdict;
     final restVerdicts = <FaultVerdict>[];
@@ -308,6 +324,8 @@ class _MeasurementListState extends State<_MeasurementList> {
           _FocusMeasurementCard(
             verdict: focusVerdict,
             drills: analysis.recommendations[focusVerdict.id] ?? const [],
+            addressFrame: addressFrame,
+            impactFrame: impactFrame,
           ),
 
         // Remaining faults — dense rows, one shared surface.
@@ -323,6 +341,8 @@ class _MeasurementListState extends State<_MeasurementList> {
                     verdict: restVerdicts[i],
                     drills: analysis.recommendations[restVerdicts[i].id] ??
                         const [],
+                    addressFrame: addressFrame,
+                    impactFrame: impactFrame,
                   ),
                 ],
               ],
@@ -340,14 +360,21 @@ class _FocusMeasurementCard extends StatelessWidget {
   const _FocusMeasurementCard({
     required this.verdict,
     required this.drills,
+    this.addressFrame,
+    this.impactFrame,
   });
 
   final FaultVerdict verdict;
   final List<Drill> drills;
+  final KeyFrame? addressFrame;
+  final KeyFrame? impactFrame;
 
   @override
   Widget build(BuildContext context) {
     final sc = SwingColors.of(context);
+    final showStills = verdict.flagged &&
+        addressFrame != null &&
+        impactFrame != null;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -372,6 +399,15 @@ class _FocusMeasurementCard extends StatelessWidget {
             ),
             Gap.sm,
             _MeasurementContent(verdict: verdict),
+            // Address vs impact stills with the measured landmark highlighted.
+            if (showStills) ...[
+              Gap.sm,
+              FaultStills(
+                faultId: verdict.id,
+                addressFrame: addressFrame!,
+                impactFrame: impactFrame!,
+              ),
+            ],
             if (drills.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text('Try these drills',
@@ -392,10 +428,14 @@ class _MeasurementRow extends StatefulWidget {
   const _MeasurementRow({
     required this.verdict,
     required this.drills,
+    this.addressFrame,
+    this.impactFrame,
   });
 
   final FaultVerdict verdict;
   final List<Drill> drills;
+  final KeyFrame? addressFrame;
+  final KeyFrame? impactFrame;
 
   @override
   State<_MeasurementRow> createState() => _MeasurementRowState();
@@ -407,6 +447,9 @@ class _MeasurementRowState extends State<_MeasurementRow> {
   @override
   Widget build(BuildContext context) {
     final hasDrills = widget.verdict.flagged && widget.drills.isNotEmpty;
+    final hasStills = widget.verdict.flagged &&
+        widget.addressFrame != null &&
+        widget.impactFrame != null;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -414,7 +457,7 @@ class _MeasurementRowState extends State<_MeasurementRow> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _MeasurementContent(verdict: widget.verdict),
-          if (hasDrills) ...[
+          if (hasDrills || hasStills) ...[
             Gap.sm,
             InkWell(
               onTap: () => setState(() => _expanded = !_expanded),
@@ -431,8 +474,10 @@ class _MeasurementRowState extends State<_MeasurementRow> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      '${widget.drills.length} '
-                      'drill${widget.drills.length == 1 ? '' : 's'}',
+                      hasDrills
+                          ? '${widget.drills.length} '
+                              'drill${widget.drills.length == 1 ? '' : 's'}'
+                          : 'Show detail',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Theme.of(context).colorScheme.outline,
                           ),
@@ -442,8 +487,18 @@ class _MeasurementRowState extends State<_MeasurementRow> {
               ),
             ),
             if (_expanded) ...[
-              Gap.sm,
-              for (final drill in widget.drills) DrillTile(drill: drill),
+              if (hasStills) ...[
+                Gap.sm,
+                FaultStills(
+                  faultId: widget.verdict.id,
+                  addressFrame: widget.addressFrame!,
+                  impactFrame: widget.impactFrame!,
+                ),
+              ],
+              if (hasDrills) ...[
+                Gap.sm,
+                for (final drill in widget.drills) DrillTile(drill: drill),
+              ],
             ],
           ],
         ],

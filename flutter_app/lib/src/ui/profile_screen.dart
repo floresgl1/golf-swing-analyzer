@@ -504,7 +504,12 @@ class _DiagnosticsSection extends StatelessWidget {
             style: muted,
           ),
           Gap.sm,
-          Text('Fore Swing $appVersion', style: muted),
+          Text(
+            appVersion.contains('+')
+                ? 'Fore Swing ${appVersion.split('+').first} · build ${appVersion.split('+').last}'
+                : 'Fore Swing $appVersion',
+            style: muted,
+          ),
         ],
       ),
     );
