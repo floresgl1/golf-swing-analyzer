@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../analysis/faults.dart';
 import '../analysis/swing_history.dart';
 import '../analysis/swing_phases.dart';
 import 'theme/app_theme.dart';
@@ -88,6 +89,7 @@ class _SwingDetailScreenState extends State<SwingDetailScreen> {
               phases: _phases!,
               fps: session.fps ?? 30,
               frameCount: session.frameCount ?? _phases!.finish + 1,
+              faultWindows: _buildFaultWindows(session, _phases!),
             ),
 
           // Calibration banner.
@@ -157,6 +159,37 @@ class _SwingDetailScreenState extends State<SwingDetailScreen> {
       ),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Fault-window highlights for the video scrubber
+// ---------------------------------------------------------------------------
+
+/// Build [FaultWindow]s from a stored session's fault map. Same logic as the
+/// report-screen version, but driven by [SwingSession.faults] instead of
+/// [SwingAnalysis.faults].
+List<FaultWindow> _buildFaultWindows(SwingSession session, SwingPhases phases) {
+  final windows = <FaultWindow>[];
+  for (final id in faultIds) {
+    final result = session.faults[id];
+    if (result == null || !result.flagged) continue;
+    final int start;
+    final int end;
+    switch (id) {
+      case faultReversePivot:
+        start = phases.takeaway;
+        end = phases.top;
+      default:
+        start = phases.takeaway;
+        end = phases.impact;
+    }
+    windows.add(FaultWindow(
+      label: faultLabels[id] ?? id,
+      startFrame: start,
+      endFrame: end,
+    ));
+  }
+  return windows;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../analysis/faults.dart';
 import '../analysis/swing_history.dart';
 import '../analysis/swing_phases.dart';
 import '../analysis/swing_history_store.dart';
@@ -69,14 +70,15 @@ class ReportScreen extends StatelessWidget {
           _HeroSection(analysis: analysis),
 
           // Video scrubber — the golfer's swing with phase markers on the
-          // timeline. Placed right after the hero stills so they can scrub
-          // through the exact clip those stills came from.
+          // timeline and fault-window highlights. Placed right after the hero
+          // stills so they can scrub to the exact frames the faults came from.
           if (clipPath != null)
             SwingPlayer(
               clipPath: clipPath!,
               phases: analysis.phases,
               fps: analysis.fps,
               frameCount: analysis.frameCount,
+              faultWindows: _buildFaultWindows(analysis),
             ),
           if (writeStatus == HistoryWriteStatus.failed) const _NotSavedNotice(),
 
@@ -94,6 +96,43 @@ class ReportScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Fault-window highlights for the video scrubber
+// ---------------------------------------------------------------------------
+
+/// Build [FaultWindow]s for every flagged fault so the scrubber draws amber
+/// bands over the frames that were compared. Each fault maps to a known pair
+/// of phase frames:
+///   head sway        — address → impact
+///   reverse pivot    — address → top
+///   early extension  — address → impact
+///   loss of posture  — address → impact
+List<FaultWindow> _buildFaultWindows(SwingAnalysis analysis) {
+  final phases = analysis.phases;
+  final windows = <FaultWindow>[];
+  for (final verdict in analysis.faults) {
+    if (!verdict.flagged) continue;
+    final int start;
+    final int end;
+    switch (verdict.id) {
+      case faultReversePivot:
+        start = phases.takeaway;
+        end = phases.top;
+      default:
+        // head_sway, early_extension, loss_of_posture all measure
+        // address → impact.
+        start = phases.takeaway;
+        end = phases.impact;
+    }
+    windows.add(FaultWindow(
+      label: verdict.label,
+      startFrame: start,
+      endFrame: end,
+    ));
+  }
+  return windows;
 }
 
 // ---------------------------------------------------------------------------
