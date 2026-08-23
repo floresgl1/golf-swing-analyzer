@@ -6,8 +6,28 @@ import 'package:video_player/video_player.dart';
 import '../../analysis/swing_phases.dart';
 import '../theme/app_theme.dart';
 
+/// A fault's measurement window on the timeline, drawn as a highlight band
+/// on the scrubber so the golfer sees exactly where to look.
+class FaultWindow {
+  /// Human-readable label, e.g. "Head sway".
+  final String label;
+
+  /// Start frame of the measurement window (inclusive).
+  final int startFrame;
+
+  /// End frame of the measurement window (inclusive).
+  final int endFrame;
+
+  const FaultWindow({
+    required this.label,
+    required this.startFrame,
+    required this.endFrame,
+  });
+}
+
 /// Inline video player for the retained clip, with a custom scrubber showing
-/// phase markers (address, top, impact, finish) on the timeline.
+/// phase markers (address, top, impact, finish) on the timeline and optional
+/// fault-window highlights for flagged measurements.
 ///
 /// Placed on the report screen right after the hero stills so the golfer can
 /// scrub through the exact clip those stills came from. This is the "scrubbing
@@ -19,12 +39,18 @@ class SwingPlayer extends StatefulWidget {
     required this.phases,
     required this.fps,
     required this.frameCount,
+    this.faultWindows = const [],
   });
 
   final String clipPath;
   final SwingPhases phases;
   final double fps;
   final int frameCount;
+
+  /// Flagged fault measurement windows — drawn as colored bands on the
+  /// scrubber. Empty when nothing was flagged or the data is unavailable
+  /// (e.g. detail screen without stored verdicts).
+  final List<FaultWindow> faultWindows;
 
   @override
   State<SwingPlayer> createState() => _SwingPlayerState();
@@ -139,11 +165,12 @@ class _SwingPlayerState extends State<SwingPlayer> {
               ),
             ),
 
-          // Scrubber with phase markers.
+          // Scrubber with phase markers and fault-window highlights.
           if (_initialized)
             _PhaseScrubber(
               controller: _controller,
               phases: widget.phases,
+              faultWindows: widget.faultWindows,
               frameFraction: _frameFraction,
               onSeek: _seekToFraction,
             ),
@@ -161,12 +188,14 @@ class _PhaseScrubber extends StatelessWidget {
   const _PhaseScrubber({
     required this.controller,
     required this.phases,
+    required this.faultWindows,
     required this.frameFraction,
     required this.onSeek,
   });
 
   final VideoPlayerController controller;
   final SwingPhases phases;
+  final List<FaultWindow> faultWindows;
   final double Function(int frame) frameFraction;
   final ValueChanged<double> onSeek;
 
@@ -188,6 +217,15 @@ class _PhaseScrubber extends StatelessWidget {
       _PhaseMarker('Top', frameFraction(phases.top)),
       _PhaseMarker('Impact', frameFraction(phases.impact)),
       _PhaseMarker('Finish', frameFraction(phases.finish)),
+    ];
+
+    final faultBands = <_FaultBand>[
+      for (final fw in faultWindows)
+        _FaultBand(
+          label: fw.label,
+          startFraction: frameFraction(fw.startFrame),
+          endFraction: frameFraction(fw.endFrame),
+        ),
     ];
 
     return Padding(
@@ -216,9 +254,11 @@ class _PhaseScrubber extends StatelessWidget {
                 painter: _ScrubberPainter(
                   progress: _progress,
                   markers: markers,
+                  faultBands: faultBands,
                   trackColor: sc.onScrim.withValues(alpha: 0.12),
                   progressColor: sc.focus,
                   markerColor: sc.onScrim.withValues(alpha: 0.5),
+                  faultBandColor: sc.flagged,
                 ),
                 size: Size.infinite,
               ),
@@ -236,6 +276,16 @@ class _PhaseScrubber extends StatelessWidget {
               size: Size.infinite,
             ),
           ),
+          // Fault legend — only when there are flagged faults to show.
+          if (faultBands.isNotEmpty) ...[
+            Gap.xs,
+            _FaultLegend(
+              bands: faultBands,
+              color: sc.flagged,
+              textColor: theme.colorScheme.outline,
+              onSeek: onSeek,
+            ),
+          ],
         ],
       ),
     );
@@ -248,6 +298,18 @@ class _PhaseMarker {
   const _PhaseMarker(this.label, this.fraction);
 }
 
+/// A fault's measurement window as a fraction of the total timeline.
+class _FaultBand {
+  final String label;
+  final double startFraction;
+  final double endFraction;
+  const _FaultBand({
+    required this.label,
+    required this.startFraction,
+    required this.endFraction,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // CustomPainters for the scrubber
 // ---------------------------------------------------------------------------
@@ -256,16 +318,20 @@ class _ScrubberPainter extends CustomPainter {
   const _ScrubberPainter({
     required this.progress,
     required this.markers,
+    required this.faultBands,
     required this.trackColor,
     required this.progressColor,
     required this.markerColor,
+    required this.faultBandColor,
   });
 
   final double progress;
   final List<_PhaseMarker> markers;
+  final List<_FaultBand> faultBands;
   final Color trackColor;
   final Color progressColor;
   final Color markerColor;
+  final Color faultBandColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -282,6 +348,35 @@ class _ScrubberPainter extends CustomPainter {
       ),
       Paint()..color = trackColor,
     );
+
+    // Fault-window highlight bands — drawn behind the progress fill so the
+    // golfer sees "something happened here" even before scrubbing. Each band
+    // is a rounded rectangle spanning the measurement window, taller than the
+    // track so it stands out visually.
+    if (faultBands.isNotEmpty) {
+      final bandHeight = 16.0;
+      final bandPaint = Paint()
+        ..color = faultBandColor.withValues(alpha: 0.15);
+      final bandBorder = Paint()
+        ..color = faultBandColor.withValues(alpha: 0.35)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0;
+      final bandRadius = Radius.circular(bandHeight / 2);
+
+      for (final band in faultBands) {
+        final left = size.width * band.startFraction;
+        final right = size.width * band.endFraction;
+        final rrect = RRect.fromLTRBR(
+          left,
+          trackY - bandHeight / 2,
+          right,
+          trackY + bandHeight / 2,
+          bandRadius,
+        );
+        canvas.drawRRect(rrect, bandPaint);
+        canvas.drawRRect(rrect, bandBorder);
+      }
+    }
 
     // Progress fill.
     final progressWidth = size.width * progress;
@@ -323,7 +418,64 @@ class _ScrubberPainter extends CustomPainter {
   bool shouldRepaint(covariant _ScrubberPainter old) =>
       progress != old.progress ||
       trackColor != old.trackColor ||
-      progressColor != old.progressColor;
+      progressColor != old.progressColor ||
+      faultBands.length != old.faultBands.length;
+}
+
+/// Compact legend: tappable fault labels below the scrubber that seek to the
+/// start of the measurement window.
+class _FaultLegend extends StatelessWidget {
+  const _FaultLegend({
+    required this.bands,
+    required this.color,
+    required this.textColor,
+    required this.onSeek,
+  });
+
+  final List<_FaultBand> bands;
+  final Color color;
+  final Color textColor;
+  final ValueChanged<double> onSeek;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        for (final band in bands)
+          GestureDetector(
+            onTap: () => onSeek(band.startFraction),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    border: Border.all(
+                      color: color.withValues(alpha: 0.5),
+                      width: 1,
+                    ),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  band.label,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _MarkerLabelPainter extends CustomPainter {
