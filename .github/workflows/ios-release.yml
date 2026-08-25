@@ -36,9 +36,12 @@ jobs:
           cache: true
 
       # Same regenerate-then-patch shape as the compile gate: ios/ is
-      # gitignored, so it does not exist in the checkout.
+      # gitignored, so it does not exist in the checkout. android comes along
+      # for the same reason it does there -- flutter_launcher_icons reads
+      # `android: true` from pubspec.yaml and crashes on a tree that has no
+      # android/ -- not because anything here builds it. See ios-build.yml.
       - name: Generate iOS platform files
-        run: flutter create --platforms=ios --project-name golf_swing_analyzer .
+        run: flutter create --platforms=ios,android --project-name golf_swing_analyzer .
 
       # A dedicated keychain rather than the login keychain: it is created
       # unlocked with a known password, deleted at the end, and cannot leave
@@ -127,7 +130,11 @@ jobs:
       # Both read their config from pubspec.yaml. Running after configure_ios.py
       # is safe: the splash tool does rewrite Info.plist (it sets
       # UIStatusBarHidden), but as a keyed edit -- verified locally that every
-      # key configure_ios.py asserts is still intact afterwards.
+      # key configure_ios.py asserts is still intact afterwards. The two tools
+      # differ on missing platform folders: flutter_native_splash guards every
+      # platform with a Directory().existsSync() check and quietly skips (which
+      # is why the web half of its config is a no-op here), flutter_launcher_icons
+      # does not guard at all -- hence the android tree created above.
       - name: Stamp app icon and launch screen
         run: |
           set -euo pipefail

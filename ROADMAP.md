@@ -2132,6 +2132,14 @@ A golfer reads all of that in about two seconds, before a single word.
     after `flutter pub get` and before the build. Safe after
     `configure_ios.py`: the splash tool rewrites Info.plist for
     `UIStatusBarHidden` but leaves every key that script asserts intact.
+    The first CI run of this failed, exit 2: `flutter_launcher_icons` picks its
+    targets from the config alone (`android: true`) and never checks whether
+    `android/` exists, so on the ios-only tree it part-wrote the Android
+    resources and then died on the missing `AndroidManifest.xml`. Both
+    workflows now `flutter create --platforms=ios,android` -- the Android tree
+    is throwaway, generated only so the icon tool finds a manifest, and it
+    keeps pubspec.yaml the one place icon config lives. `flutter_native_splash`
+    needs no such help: it guards each platform with an existence check.
 
 #### ✅ Tier 3 — details that read as unfinished
 

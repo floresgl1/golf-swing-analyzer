@@ -33,8 +33,18 @@ jobs:
       # demand, so the runner's checkout has no ios/ directory at all.
       # --project-name is explicit because the directory (flutter_app) does
       # not match the pubspec name (golf_swing_analyzer).
+      #
+      # android is generated too, and NOT because this job builds it. The icon
+      # step below fails outright without it: flutter_launcher_icons decides
+      # what to write from the config alone (`android: true` in pubspec.yaml)
+      # and never checks whether android/ exists, so on an ios-only tree it
+      # part-writes the Android resources and then dies on the missing
+      # AndroidManifest.xml, exit 2. Generating the throwaway tree costs a
+      # couple of seconds and keeps pubspec.yaml the single source of icon
+      # config; the alternative is a second ios-only config file that would
+      # drift. Do not trim this back to --platforms=ios.
       - name: Generate iOS platform files
-        run: flutter create --platforms=ios --project-name golf_swing_analyzer .
+        run: flutter create --platforms=ios,android --project-name golf_swing_analyzer .
 
       # Must run after `flutter create` (there is no ios/ before it) and before
       # `pod install`, which the build step triggers. The script owns the
@@ -55,7 +65,11 @@ jobs:
       # Both read their config from pubspec.yaml. Running after configure_ios.py
       # is safe: the splash tool does rewrite Info.plist (it sets
       # UIStatusBarHidden), but as a keyed edit -- verified locally that every
-      # key configure_ios.py asserts is still intact afterwards.
+      # key configure_ios.py asserts is still intact afterwards. The two tools
+      # differ on missing platform folders: flutter_native_splash guards every
+      # platform with a Directory().existsSync() check and quietly skips (which
+      # is why the web half of its config is a no-op here), flutter_launcher_icons
+      # does not guard at all -- hence the android tree created above.
       - name: Stamp app icon and launch screen
         run: |
           set -euo pipefail
