@@ -2123,8 +2123,15 @@ A golfer reads all of that in about two seconds, before a single word.
     `icon_foreground.png` (transparent, RGBA, arc+dots only for adaptive
     icons). `flutter_launcher_icons` configured in pubspec.yaml.
     `flutter_native_splash` configured with the same dark green (#0B1D13)
-    background and centered icon. Run `dart run flutter_native_splash:create`
-    to generate platform splash assets.
+    background and centered icon.
+    *Follow-up (2026-08-24).* Config alone was not enough: the platform tree is
+    gitignored and rebuilt by `flutter create` on every CI run, so both iOS
+    workflows were shipping Flutter's default blue icon and a blank white
+    splash no matter what sat in `assets/`. Both now run
+    `dart run flutter_launcher_icons` and `dart run flutter_native_splash:create`
+    after `flutter pub get` and before the build. Safe after
+    `configure_ios.py`: the splash tool rewrites Info.plist for
+    `UIStatusBarHidden` but leaves every key that script asserts intact.
 
 #### ✅ Tier 3 — details that read as unfinished
 

@@ -118,6 +118,22 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # The icon and launch screen are generated from assets/ into the platform
+      # tree, and `flutter create` above rebuilt that tree from scratch (ios/ is
+      # gitignored, so the checkout has none). Without these, every CI build
+      # ships Flutter's default blue icon and a blank white splash regardless of
+      # what is committed under assets/. Must run after `flutter pub get` --
+      # `dart run` needs the dev_dependencies resolved -- and before the build.
+      # Both read their config from pubspec.yaml. Running after configure_ios.py
+      # is safe: the splash tool does rewrite Info.plist (it sets
+      # UIStatusBarHidden), but as a keyed edit -- verified locally that every
+      # key configure_ios.py asserts is still intact afterwards.
+      - name: Stamp app icon and launch screen
+        run: |
+          set -euo pipefail
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
+
       - name: Write ExportOptions.plist
         env:
           TEAM_ID: ${{ secrets.IOS_DEVELOPMENT_TEAM }}
