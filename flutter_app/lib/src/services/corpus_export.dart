@@ -7,11 +7,20 @@
 /// Deliberately not an upload. There is no backend, no account, and no
 /// background transfer, so nothing leaves the device without someone choosing
 /// to send it and choosing where.
+///
+/// **Why zip?** iOS mangles bare `.jsonl` files sent via iMessage: the share
+/// target receives a binary plist bookmark pointing at the iMessage attachment
+/// path, not the file content. `participant.json` survives because iOS
+/// recognises `application/json`; `.jsonl` (MIME `text/plain`) does not.
+/// Wrapping everything in a single `.zip` fixes every share target — email,
+/// AirDrop, iMessage, Save to Files — because iOS treats a zip as an opaque
+/// blob and passes it through.
 library;
 
 import 'dart:io';
 import 'dart:ui' show Offset, Rect, Size;
 
+import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -52,22 +61,9 @@ Rect shareOriginOrFallback(Rect? fromControl, Size screen) {
   return Rect.fromCenter(center: bounds.center, width: 1, height: 1);
 }
 
-/// MIME type to attach a corpus file with.
-///
-/// iOS classifies a share attachment by type, and `.jsonl` has no registered
-/// one. Observed on device 2026-08-17: `participant.json` transferred every
-/// time while `swing_history.jsonl` was silently dropped by the share target,
-/// twice, with no error — the share sheet reported "5 swings" and delivered
-/// only the file whose extension iOS recognised.
-///
-/// JSON Lines is not valid JSON as a whole (each *line* is), so `text/plain`
-/// is both more accurate and the type every share target accepts.
-String mimeTypeForCorpusFile(String fileName) =>
-    fileName.endsWith('.jsonl') ? 'text/plain' : 'application/json';
-
 /// What an export attempt produced.
 class ExportResult {
-  /// Files that existed and were handed to the share sheet.
+  /// Files that were packed into the zip and handed to the share sheet.
   final List<String> fileNames;
 
   /// Records in the corpus file, or null when it could not be read.
@@ -78,7 +74,7 @@ class ExportResult {
   bool get isEmpty => fileNames.isEmpty;
 }
 
-/// Collects the corpus files and opens the system share sheet.
+/// Collects the corpus files into a zip and opens the system share sheet.
 class CorpusExporter {
   const CorpusExporter();
 
@@ -94,18 +90,20 @@ class CorpusExporter {
     'swing_history_failures.jsonl',
   ];
 
-  /// Share whichever corpus files exist.
+  /// Pack all corpus files into a zip and share it.
   ///
   /// Returns an empty result when there is nothing to send, so the caller can
   /// say so rather than opening an empty share sheet.
   Future<ExportResult> share({Rect? sharePositionOrigin}) async {
     final dir = await getApplicationDocumentsDirectory();
-    final present = <XFile>[];
+
+    // Collect whichever corpus files exist.
+    final present = <File>[];
     final names = <String>[];
     for (final name in corpusFileNames) {
       final file = File(p.join(dir.path, name));
       if (await file.exists()) {
-        present.add(XFile(file.path, mimeType: mimeTypeForCorpusFile(name)));
+        present.add(file);
         names.add(name);
       }
     }
@@ -113,14 +111,51 @@ class CorpusExporter {
       return const ExportResult(fileNames: []);
     }
 
-    final count = await _countRecords(File(p.join(dir.path, corpusFileNames.first)));
-    await Share.shareXFiles(
-      present,
-      subject: 'Golf swing corpus export',
-      text: 'Swing history export'
-          '${count == null ? '' : ' — $count swing${count == 1 ? '' : 's'}'}.',
-      sharePositionOrigin: sharePositionOrigin,
+    final count = await _countRecords(
+      File(p.join(dir.path, corpusFileNames.first)),
     );
+
+    // Build a zip archive containing all present corpus files.
+    final archive = Archive();
+    for (final file in present) {
+      final bytes = await file.readAsBytes();
+      archive.addFile(ArchiveFile(
+        p.basename(file.path),
+        bytes.length,
+        bytes,
+      ));
+    }
+    final zipBytes = ZipEncoder().encode(archive);
+
+    // Write the zip to a temp file. Named with today's date so multiple
+    // exports on the same day overwrite rather than accumulating, and the
+    // recipient can tell when it was sent.
+    final now = DateTime.now();
+    final stamp = '${now.year}'
+        '${now.month.toString().padLeft(2, '0')}'
+        '${now.day.toString().padLeft(2, '0')}';
+    final zipName = 'swing_export_$stamp.zip';
+    final zipFile = File(p.join(dir.path, zipName));
+    await zipFile.writeAsBytes(zipBytes!);
+
+    try {
+      await Share.shareXFiles(
+        [XFile(zipFile.path, mimeType: 'application/zip')],
+        subject: 'Swing data export',
+        text: 'Swing history export'
+            '${count == null ? '' : ' — $count swing${count == 1 ? '' : 's'}'}.',
+        sharePositionOrigin: sharePositionOrigin,
+      );
+    } finally {
+      // Clean up the temp zip. Best-effort: a stale zip in Documents is
+      // harmless and will be overwritten on the next export.
+      try {
+        await zipFile.delete();
+      } on FileSystemException {
+        // Nothing to do.
+      }
+    }
+
     return ExportResult(fileNames: names, recordCount: count);
   }
 

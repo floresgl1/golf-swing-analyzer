@@ -36,6 +36,11 @@ dependencies:
   # swings leave the device: no backend, no upload, no account.
   share_plus: ^10.0.0
 
+  # Zip corpus files before sharing. iOS mangles bare .jsonl files sent via
+  # iMessage (converts them to binary plist bookmarks); a .zip survives every
+  # share target.
+  archive: ^4.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
