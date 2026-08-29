@@ -1772,6 +1772,29 @@ shape `drills.json`. 96 tests pass.
 - **User accounts**: cloud sync for swing history across devices
 - **Sharing**: export swing reports as images or PDFs for sharing with an instructor
 - **Onboarding**: guide for recording angle, distance, lighting for best results
+- **Recording zoom**: pinch-to-zoom on the viewfinder so the golfer can frame
+  tighter from a fixed tripod position without physically moving the phone.
+  CameraController already exposes `setZoomLevel`; the UI needs a gesture
+  recognizer and a zoom indicator. Keep the framing guide accurate at non-1×
+  zoom (the silhouette scales with the crop).
+- **Video trimming / swing marking**: let the golfer mark the swing window in
+  the clip before analysis, rather than relying entirely on the localizer.
+  Two levels — a simple "the swing is roughly here" trim (scrub to start, scrub
+  to end), or a single tap-to-mark at impact. Either narrows the search window
+  for `detectPhases` and rescues clips where the localizer picks the wrong
+  candidate. The trim UI belongs on `SwingPreviewScreen`, which already plays
+  the clip. Not a frame-accurate editor — the localizer still finds the exact
+  phases within the trimmed window.
+- **Camera roll import**: analyze a swing from a video already on the phone
+  (recorded with the native camera, slow-mo, or sent by someone else). Adds an
+  "Import from library" entry point alongside "Record." The pipeline is the
+  same — frame extraction, pose estimation, phase detection — but the input is
+  a photo-library asset instead of a live capture. Needs `image_picker` or
+  `photo_manager` for the picker, and the clip should be copied into
+  `ClipStore` so the rest of the flow (preview, analysis, retention, export)
+  works unchanged. This also unblocks analyzing 240fps slow-mo clips shot with
+  the native camera, which is the fastest path to higher pose coverage until
+  the app records at 240fps itself.
 
 ### Continuous recording — let it roll (2026-08-23)
 
